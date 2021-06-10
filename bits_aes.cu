@@ -17,6 +17,20 @@
 #define BLOCK_SIZE 128
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
+__device__ void cu_printHex(char* ptr, int len){
+    for(int i=0; i<len; i++){
+        printf("%02x ", ptr[i]&0xff);
+    }
+    printf("\n");
+}
+
+void printHex(char* ptr, int len){
+    for(int i=0; i<len; i++){
+        printf("%02x ", ptr[i]&0xff);
+    }
+    puts("");
+}
+
 
 __device__ static void swapByte(uint128_t* a , uint128_t* b, uint128_t m, int n){
     uint128_t t = ((((*a)>>n)^(*b)))&m;
@@ -29,24 +43,24 @@ __device__ void bitorder_retransform(char* plain, uint128_t* a){
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
 
-    swapByte(a+7, a+3, m3, 4);
-    swapByte(a+6, a+2, m3, 4);
-    swapByte(a+5, a+1, m3, 4);
-    swapByte(a+4,   a, m3, 4);
+    swapByte(a,   a+4, m3, 4);
+    swapByte(a+1, a+5, m3, 4);
+    swapByte(a+2, a+6, m3, 4);
+    swapByte(a+3, a+7, m3, 4);
     
-    swapByte(a+7, a+5, m2, 2);
-    swapByte(a+6, a+4, m2, 2);
-    swapByte(a+3, a+1, m2, 2);
-    swapByte(a+2,   a, m2, 2);
+    swapByte(a,   a+2, m2, 2);
+    swapByte(a+1, a+3, m2, 2);
+    swapByte(a+4, a+6, m2, 2);
+    swapByte(a+5, a+7, m2, 2);
     
-    swapByte(a+7, a+6, m1, 1);
-    swapByte(a+5, a+4, m1, 1);
-    swapByte(a+3, a+2, m1, 1);
-    swapByte(a+1,   a, m1, 1);
-    
+    swapByte(a,   a+1, m1, 1);
+    swapByte(a+2, a+3, m1, 1);
+    swapByte(a+4, a+5, m1, 1);
+    swapByte(a+6, a+7, m1, 1);
+
     for(int i=0; i<8; i++){
-            ((uint128_t*)plain)[i] = a[i];
-    }
+        ((uint128_t*)plain)[i] = a[7-i];
+    } 
 }
 
 __device__ void bitorder_transform(char* plain, uint128_t* a){
@@ -55,23 +69,23 @@ __device__ void bitorder_transform(char* plain, uint128_t* a){
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
 
     for(int i=0; i<8; i++){
-            a[i] = ((uint128_t*)plain)[i];
+        a[7-i] = ((uint128_t*)plain)[i];
     }
     
-    swapByte(a+1,   a, m1, 1);
-    swapByte(a+3, a+2, m1, 1);
-    swapByte(a+5, a+4, m1, 1);
-    swapByte(a+7, a+6, m1, 1);
+    swapByte(a,   a+1, m1, 1);
+    swapByte(a+2, a+3, m1, 1);
+    swapByte(a+4, a+5, m1, 1);
+    swapByte(a+6, a+7, m1, 1);
     
-    swapByte(a+2,   a, m2, 2);
-    swapByte(a+3, a+1, m2, 2);
-    swapByte(a+6, a+4, m2, 2);
-    swapByte(a+7, a+5, m2, 2);
+    swapByte(a,   a+2, m2, 2);
+    swapByte(a+1, a+3, m2, 2);
+    swapByte(a+4, a+6, m2, 2);
+    swapByte(a+5, a+7, m2, 2);
     
-    swapByte(a+4,   a, m3, 4);
-    swapByte(a+5, a+1, m3, 4);
-    swapByte(a+6, a+2, m3, 4);
-    swapByte(a+7, a+3, m3, 4);
+    swapByte(a,   a+4, m3, 4);
+    swapByte(a+1, a+5, m3, 4);
+    swapByte(a+2, a+6, m3, 4);
+    swapByte(a+3, a+7, m3, 4);
 }
 
 // from [13] A Fast and Cache-Timing Resistant Implementation of the AES
@@ -285,12 +299,7 @@ __global__ void encrypt(char*plain, uint128_t keys[ROUND_KEY_COUNT][8], char*cyp
     bitorder_retransform(cypher, (uint128_t*)a);
 }
 
-void printHex(char* ptr, int len){
-    for(int i=0; i<len; i++){
-        printf("%x ", ptr[i]);
-    }
-    puts("");
-}
+
 
 // TODO: consider, keys need to be bit sliced
 void create_round_key(char* key, char* roundkey){}
