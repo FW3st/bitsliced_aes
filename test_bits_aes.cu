@@ -24,6 +24,16 @@ unsigned char substitute(unsigned char c){
     return SBOX[c >> 4][c & 0xf];
 }
 
+char get_byte(char a[8][16], int n){
+    int c = n/8;
+    int b = 7-n%8;
+    char ret = 0;
+    for(int i = 7; i>=0; i--){
+        ret = (ret << 1) | ((a[i][c]>>b)&1);
+    }
+    return ret;    
+}
+
 void printError(){
     cudaError_t error = cudaGetLastError ();
     printf("error: %s\n",cudaGetErrorName(error) );
@@ -124,16 +134,6 @@ __global__ void __test_subBytes(uint128_t a[8]){
     subBytes(a);
 }
 
-char get_byte(char a[8][16], int n){
-    int c = n/8;
-    int b = 7-n%8;
-    char ret = 0;
-    for(int i = 7; i>=0; i--){
-        ret = (ret << 1) | ((a[i][c]>>b)&1);
-    }
-    return ret;    
-}
-
 void check_subBytes(char a[8][16], char s[8][16]){
     for(int i=0; i<128; i++){
         unsigned char ac = get_byte(a,i);
@@ -145,6 +145,33 @@ void check_subBytes(char a[8][16], char s[8][16]){
         }
     }
     printf("check_subBytes passed\n");
+}
+
+__global__ void __test_shiftRows(uint128_t a[8]){
+    shiftRows(a);
+}
+
+void check_shiftRows(char a[8][16], char s[8][16]){
+    int fail = 0;
+    for(int i=0; i<8; i++){
+        // no shift
+        fail += abs(memcmp(a[i],s[i],4));
+        // one byte
+        fail += abs(memcmp(a[i]+5,s[i]+4,3));
+        fail += a[i][4]!=s[i][7];
+        // zwo bytes
+        fail += abs(memcmp(a[i]+8,s[i]+10,2));
+        fail += abs(memcmp(a[i]+10,s[i]+8,2));
+        // three bytes
+        fail += abs(memcmp(a[i]+12,s[i]+13,3));
+        fail += a[i][15]!=s[i][12];
+        
+        if(fail != 0){
+            printf("check_shiftRows failed\n");
+            return;
+        }
+    }
+    printf("check_shiftRows passed\n");
 }
 
 int main(void) {
@@ -194,6 +221,12 @@ int main(void) {
     __test_subBytes<<<1,1>>>(inp128_cuda);
     cudaMemcpy(out128, inp128_cuda, 16*8, cudaMemcpyDeviceToHost);
     check_subBytes((char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
+
+    // CHECK shiftRows
+    cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
+    __test_shiftRows<<<1,1>>>(inp128_cuda);
+    cudaMemcpy(out128, inp128_cuda, 16*8, cudaMemcpyDeviceToHost);
+    check_shiftRows((char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
 
     // CHECK encrypt
     check_encrypt((char*)raw, (char*)raw2);

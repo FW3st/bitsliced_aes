@@ -20,6 +20,7 @@
 __device__ void cu_printHex(char* ptr, int len){
     for(int i=0; i<len; i++){
         printf("%02x ", ptr[i]&0xff);
+        if(i%4 == 0 && i != 0) printf("| ");
     }
     printf("\n");
 }
@@ -27,6 +28,7 @@ __device__ void cu_printHex(char* ptr, int len){
 void printHex(char* ptr, int len){
     for(int i=0; i<len; i++){
         printf("%02x ", ptr[i]&0xff);
+        if(i%4 == 3) printf("| ");
     }
     puts("");
 }
@@ -267,8 +269,9 @@ __device__ void subBytes(uint128_t a[8]){
 
 __device__ void shiftRows(uint128_t a[8]){
     for(int i=0; i<8; i++){
-        a[i].hi = __byte_perm((uint64_t)(a[i].hi),0, 0b0010000100000011);
-        a[i].lo = ((uint64_t)__byte_perm(a[i].lo>>32,0, 0b0001000000110010)<<32) | __byte_perm((uint64_t)(a[i].lo),0, 0b0000001100100001);
+        a[i].lo = (uint64_t)__byte_perm((uint64_t)(a[i].lo)>>32,0,0b0000001100100001)<<32 | a[i].lo&0xffffffff;
+        a[i].hi = ((uint64_t)__byte_perm(a[i].hi>>32,0, 
+        0b0010000100000011)<<32) | __byte_perm((uint64_t)(a[i].hi),0, 0b0001000000110010);
     }
 }
 
