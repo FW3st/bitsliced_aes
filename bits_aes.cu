@@ -256,13 +256,13 @@ __device__ void subBytes(uint128_t a[8]){
     L28 = L11 ^ L14;
     L29 = L11 ^ L17;
     a[7] = L6 ^ L24;
-    a[6] = (~(L16^L26))&1;
-    a[5] = (~(L19^L28))&1;
+    a[6] = (~(L16^L26));
+    a[5] = (~(L19^L28));
     a[4] = L6 ^ L21;
     a[3] = L20 ^ L22;
     a[2] = L25 ^ L29;
-    a[1] = (~(L13^L27))&1;
-    a[0] = (~(L6^L23))&1;
+    a[1] = (~(L13^L27));
+    a[0] = (~(L6^L23));
 }
 
 __device__ void shiftRows(uint128_t a[8]){
@@ -369,7 +369,7 @@ int main(void) {
     for(int i=0; i<KEY_SIZE; i++){
         key[i] = (char)i;
     }
-    create_round_key(key, roundkey);
+    create_round_keycreate_round_key(key, roundkey);
     
     for(int i=0; i<BLOCK_SIZE; i++){
         plain[i] = (char)0;
