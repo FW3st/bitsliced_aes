@@ -1,0 +1,3 @@
+[submodule "CUDA-uint128"]
+	path = CUDA-uint128
+	url = https://github.com/curtisseizert/CUDA-uint128
