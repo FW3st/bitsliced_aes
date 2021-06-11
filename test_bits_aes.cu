@@ -1,5 +1,6 @@
 #define TEST
 #include "bits_aes.cu"
+#include "aes_cbc.h"
 
 void printError(){
     cudaError_t error = cudaGetLastError ();
@@ -56,10 +57,48 @@ uint128_t touint128(void* ar){
 }
 
 
+void check_encrypt(char* plain, char* key){
+    //intel avx cbc aes, n times without IV ~> ecb
+    struct cbc_key_data round_keys;
+    uint8_t iv[16];
+    uint8_t out[16*8];
+    memset(iv, 0, 128);
+    aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&round_keys);
+    for(int i=0; i<8; i++){
+        aes_cbc_enc_128(plain+16*i, iv, round_keys.enc_keys,out+16*i, 16);
+    }
+    
+    //bitsliced aes
+    uint8_t* bs_out[16*8];
+    char *d_plain;
+    uint128_t d_roundkey[11][8];
+    char *d_cypher;
+    char* bs_roundkey = (char*) malloc(1408);
+    create_round_key(key, bs_roundkey);
+    
+    cudaMalloc((void**)&d_plain, 16*8);
+    cudaMalloc((void**)&d_cypher, 16*8);
+    cudaMalloc((void**)&d_roundkey, 1408);
+    
+    cudaMemcpy(d_plain, plain, 16*8, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_roundkey, bs_roundkey, 1408, cudaMemcpyHostToDevice);
+    
+    encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
+    
+    cudaMemcpy(bs_out, d_cypher, 16*8, cudaMemcpyDeviceToHost);
+    
+    if(memcpy(bs_out,out,16*8)==0){
+        printf("Encrypt passed\n");
+    } else {
+        printf("Encrypt failed\n");
+    }
+}
+
 int main(void) {
     time_t t;
     srand((unsigned) time(&t));
     uint128_t inp128[8];
+    uint128_t inp1282[8];
     uint128_t out128[8];
     uint128_t out1282[8];
     uint128_t* inp128_cuda;
@@ -67,12 +106,16 @@ int main(void) {
     uint128_t* out128_cuda2;
     
     char (*raw)[16] = (char(*)[16]) malloc(16*8);
+    char (*raw2)[16] = (char(*)[16]) malloc(16*8);
     int* ran_buf = (int*) raw;
+    int* ran_buf2 = (int*) raw2;
     //memset(ran_buf,0,16*8);
     //raw[0][0] = 0x80;
     for(int i = 0; i<8; i++){
         fill_random(ran_buf, 32);
+        fill_random(ran_buf2, 32);
         inp128[i] = touint128(ran_buf+4*i);
+        inp1282[i] = touint128(ran_buf2+4*i);
     }        
     
     cudaMalloc((void**)&inp128_cuda, 16*8);
@@ -90,6 +133,9 @@ int main(void) {
     cudaMemcpy(out1282, out128_cuda2, 16*8, cudaMemcpyDeviceToHost);
     check_bitreorder((char(*)) ((void*)inp128), (char(*)) ((void*)out1282));
     
+    
+    // CHECK encrypt
+    check_encrypt((char*)raw, (char*)raw2);
     //cudaDeviceSynchronize();
     
     cudaFree(out128_cuda2);

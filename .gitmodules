@@ -1,3 +1,6 @@
 [submodule "CUDA-uint128"]
 	path = CUDA-uint128
 	url = https://github.com/curtisseizert/CUDA-uint128
+[submodule "isa-l_crypto"]
+	path = isa-l_crypto
+	url = https://github.com/intel/isa-l_crypto
