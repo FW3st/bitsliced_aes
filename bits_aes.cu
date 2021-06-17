@@ -328,7 +328,42 @@ __global__ void encrypt(char*plain, uint128_t keys[ROUND_KEY_COUNT][8], char*cyp
     bitorder_retransform(cypher, (uint128_t*)a);
 }
 
-
+void bitslice_key(unsigned char exkey[176], unsigned char slicedkey[8][176]){
+  for(int i=0; i<176; i++){
+    if((exkey[i] & 0x80) != 0)
+      slicedkey[7][i] = 0xff;
+    else
+      slicedkey[7][i] = 0x00;
+    if((exkey[i] & 0x40) != 0)
+      slicedkey[6][i] = 0xff;
+    else
+      slicedkey[6][i] = 0x00;
+    if((exkey[i] & 0x20) != 0)
+      slicedkey[5][i] = 0xff;
+    else
+      slicedkey[5][i] = 0x00;
+    if((exkey[i] & 0x10) != 0)
+      slicedkey[4][i] = 0xff;
+    else
+      slicedkey[4][i] = 0x00;
+    if((exkey[i] & 0x08) != 0)
+      slicedkey[3][i] = 0xff;
+    else
+      slicedkey[3][i] = 0x00;
+    if((exkey[i] & 0x04) != 0)
+      slicedkey[2][i] = 0xff;
+    else
+      slicedkey[2][i] = 0x00;
+    if((exkey[i] & 0x02) != 0)
+      slicedkey[1][i] = 0xff;
+    else
+      slicedkey[1][i] = 0x00;
+    if((exkey[i] & 0x01) != 0)
+      slicedkey[0][i] = 0xff;
+    else
+      slicedkey[0][i] = 0x00;
+  }
+}
 
 // TODO: consider, keys need to be bit sliced
 void create_round_key(char* key, char* roundkey){
