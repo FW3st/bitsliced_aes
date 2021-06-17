@@ -331,31 +331,58 @@ __global__ void encrypt(char*plain, uint128_t keys[ROUND_KEY_COUNT][8], char*cyp
 
 
 // TODO: consider, keys need to be bit sliced
-void create_round_key(char* key, char* roundkey){}
-
-/*
-def keyExpansion(self, k):
-
-    def rotWord(a: bytes):
-        return bytes((a[1], a[2], a[3], a[0]))
-
-    def rcon(idx):
-        return modg(1 << (idx - 1)) + b'\x00\x00\x00'
-
-    def subWord(a: bytes) -> bytes:
-        return b''.join(sboxi(b).to_bytes(1, "little") for b in a)
-
-    for i in range(NK):
-        self.key[i] = k[4 * i:4 * i + 4]
-
-    for i in range(NK, NB * (NR + 1)):
-        tmp: bytes = self.key[i - 1]
-        if i % NK == 0:
-            tmp = xor(subWord(rotWord(tmp)), rcon(i // NK))
-        elif NK > 6 and i % NK == 4:
-            tmp = subWord(tmp)
-        self.key[i] = xor(self.key[i - NK], tmp)
-*/
+void create_round_key(char* key, char* roundkey){
+  //Die Runden anhand des Schlüssels bestimmen
+  int rounds = 10;
+  if(KEY_SIZE == 192)
+    rounds = 12;
+  else if(KEY_SIZE == 256)
+    rounds = 14;
+  //Anzahl der 4 Byte words ermitteln:
+  int number_key_words = KEY_SIZE/(8*4);
+  //Die ersten Schlüsselwords werden einfach übertragen
+  for(int i = 0; i<number_key_words*4; i++)
+    roundkey[i] = key[i];
+  //ToDo: Remove
+  for(int i = 0; i<number_key_words*4; i++)
+    printf("%x ", roundkey[i]);
+  printf("\r\n");
+  //Berechnen der weiteren Keys
+  unsigned char tmpL[4];
+  unsigned char rC[4];
+  unsigned char subL[4] = {0x00, 0x00, 0x00, 0x00};
+  for(int i = number_key_words; i<=(number_key_words*(rounds+1)); i++){
+    tmpL[0] = roundkey[i*4-4];
+    tmpL[1] = roundkey[i*4+1-4];
+    tmpL[2] = roundkey[i*4+2-4];
+    tmpL[3] = roundkey[i*4+3-4];
+    if(i%number_key_words==0){
+      //Rundenkonstante ermitteln 2^(i/number_key_words-1)
+      //rC[0] = pow(2, (floor(i/number_key_words)-1));
+      rC[0] = modg(1<<(i/number_key_words-1));
+      rC[1] = 0x00;
+      rC[2] = 0x00;
+      rC[3] = 0x00;
+      //Rotiere nach links und wende SBOX an und xor mit Rundenkonstante
+      subWord(tmpL, subL);
+      tmpL[0] = subL[1]^rC[0];
+      tmpL[1] = subL[2]^rC[1];
+      tmpL[2] = subL[3]^rC[2];
+      tmpL[3] = subL[0]^rC[3];
+    }
+    if(number_key_words == 8 && i%8 == 4){
+      subWord(tmpL, subL);
+      tmpL[0] = subL[0];
+      tmpL[1] = subL[1];
+      tmpL[2] = subL[2];
+      tmpL[3] = subL[3];
+    }
+    roundkey[i*4] = roundkey[i*4-number_key_words*4] ^ tmpL[0];
+    roundkey[i*4+1] = roundkey[i*4+1-number_key_words*4] ^ tmpL[1];
+    roundkey[i*4+2] = roundkey[i*4+2-number_key_words*4] ^ tmpL[2];
+    roundkey[i*4+3] = roundkey[i*4+3-number_key_words*4] ^ tmpL[3];
+  }
+}
 
 
 void print_device_info(){
@@ -397,7 +424,7 @@ int main(void) {
     for(int i=0; i<KEY_SIZE; i++){
         key[i] = (char)i;
     }
-    create_round_keycreate_round_key(key, roundkey);
+    create_round_key(key, roundkey);
     
     for(int i=0; i<BLOCK_SIZE; i++){
         plain[i] = (char)0;
