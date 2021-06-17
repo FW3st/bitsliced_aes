@@ -20,18 +20,59 @@ const uint8_t SBOX[16][16] = {{0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0
         {0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf},
         {0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16}};
 
+
 unsigned char substitute(unsigned char c){
     return SBOX[c >> 4][c & 0xf];
 }
 
-char get_byte(char a[8][16], int n){
+void printHex128(uint128_t* a, int l){
+    printHex((char*)(void*)a,l);
+}
+
+void print_state(uint128_t* a){
+    printHex128(a,16);
+    printHex128(a+1,16);
+    printHex128(a+2,16);
+    printHex128(a+3,16);
+    printHex128(a+4,16);
+    printHex128(a+5,16);
+    printHex128(a+6,16);
+    printHex128(a+7,16);
+    printf("____________________\n");
+}
+
+unsigned char get_byte(unsigned char a[8][16], int n){
     int c = n/8;
     int b = 7-n%8;
-    char ret = 0;
+    unsigned char ret = 0;
     for(int i = 7; i>=0; i--){
         ret = (ret << 1) | ((a[i][c]>>b)&1);
     }
     return ret;    
+}
+
+void set_byte(unsigned char a[8][16], int n, unsigned char v){
+    int c = n/8;
+    int b = 7-n%8;
+    for(int i = 7; i>=0; i--){
+        if(v&(1<<i)){
+            a[i][c] = a[i][c] | (1<<b);
+        } else {
+            a[i][c] = a[i][c] & (~(1<<b));
+        }
+    } 
+}
+
+void set_byte128(uint128_t* a, int n, unsigned char v){
+    set_byte((unsigned char (*)[16])(void*)a, n, v);
+}
+
+uint128_t touint128(void* ar){
+    uint64_t* inp = (uint64_t*) ar;
+    uint128_t ret;
+    ret.lo = inp[0];
+    ret.hi = inp[1];
+    return ret;
 }
 
 void printError(){
@@ -80,14 +121,6 @@ void check_bitreorder(char* raw, char* reo){
     printf("check_bitreorder passed\n");
 }
 
-uint128_t touint128(void* ar){
-    uint64_t* inp = (uint64_t*) ar;
-    uint128_t ret;
-    ret.lo = inp[0];
-    ret.hi = inp[1];
-    return ret;
-}
-
 
 void check_encrypt(char* plain, char* key){
     //intel avx cbc aes, n times without IV ~> ecb
@@ -125,16 +158,27 @@ void check_encrypt(char* plain, char* key){
         printf("Encrypt failed\n");
     }
 }
+__global__ void __test_addRoundKey(uint128_t a[8], uint128_t key[8]){
+    addRoundKey(a, key);
+}
 
-void check_addRoundKey(){
-    printf("check_addRoundKey failed\n");
+void check_addRoundKey(unsigned char a[8][16], unsigned char s[8][16], unsigned char key[8][16]){
+    for(int i=0; i<8;i++){
+        for(int j=0; j<16; j++){
+            if((a[i][j]^key[i][j]) != s[i][j]){
+                printf("check_addRoundKey failed\n");
+                return;
+            }
+        }
+    }
+    printf("check_addRoundKey passed\n");
 }
 
 __global__ void __test_subBytes(uint128_t a[8]){
     subBytes(a);
 }
 
-void check_subBytes(char a[8][16], char s[8][16]){
+void check_subBytes(unsigned char a[8][16], unsigned char s[8][16]){
     for(int i=0; i<128; i++){
         unsigned char ac = get_byte(a,i);
         unsigned char sc = get_byte(s,i);
@@ -174,6 +218,80 @@ void check_shiftRows(char a[8][16], char s[8][16]){
     printf("check_shiftRows passed\n");
 }
 
+__global__ void __test_mixColumns(uint128_t a[8]){
+    mixColumns(a);
+}
+
+static inline uint32_t bit_length(const uint32_t x) {
+  uint32_t y;
+  asm ( "\tbsr %1, %0\n"
+      : "=r"(y)
+      : "r" (x)
+  );
+  return y+1;
+}
+
+unsigned char modg(unsigned int a){
+    unsigned int m = 0b100011011;
+    unsigned int end = m;
+    if(a < m){
+        if (a > 255){
+            a = a ^ m;
+        }
+        return (unsigned char)a;
+    }
+    m = m << (bit_length(a) - bit_length(m));
+    unsigned int mask = 1 << (bit_length(m) - 1);
+    while(1){
+        if((a & mask) != 0){
+            a ^= m;
+        }
+        if(m == end){
+            return (unsigned char)a;
+        }
+        m >>= 1;
+        mask >>= 1;
+    }
+}
+
+unsigned char mulBytes(unsigned char a, unsigned char b){
+    unsigned int s = 0;
+    unsigned char mask = 1;
+    for(int i=0; i<8; i++){
+        if((b & mask) != 0){
+            s ^= (((unsigned int)a) << i);
+        }
+        mask <<= 1;
+    }
+    return modg(s);
+}
+
+void check_mixColumns(unsigned char a[8][16], unsigned char s[8][16]){
+    unsigned char q,w,e,r;
+    unsigned char v,b,n,m;
+    for(int i=0; i<8; i++){
+        for(int c=0; c<4; c++){
+            q = (mulBytes(0x02, get_byte(a, i+8*(c)))^ mulBytes(0x03, get_byte(a, i+8*(c+4))))^
+                    (get_byte(a, i+8*(c+8))^get_byte(a, i+8*(c+12)));
+            w = (mulBytes(0x02, get_byte(a, i+8*(c+4)))^ mulBytes(0x03, get_byte(a, i+8*(c+8))))^
+                    (get_byte(a, i+8*(c))^ get_byte(a, i+8*(c+12)));
+            e = (mulBytes(0x02, get_byte(a, i+8*(c+8)))^ mulBytes(0x03, get_byte(a, i+8*(c+12))))^
+                    (get_byte(a, i+8*(c))^ get_byte(a, i+8*(c+4)));
+            r = (mulBytes(0x02, get_byte(a, i+8*(c+12)))^ mulBytes(0x03, get_byte(a, i+8*(c))))^
+                    (get_byte(a, i+8*(c+8))^ get_byte(a, i+8*(c+4)));
+            v = get_byte(s, i+8*(c));
+            b = get_byte(s, i+8*(c+4));
+            n = get_byte(s, i+8*(c+8));
+            m = get_byte(s, i+8*(c+12));
+            if(q!=v || w!= b || e!=n || r!=m){
+                printf("check_mixColumns failed\n");
+                return;
+            }
+        }
+    }
+    printf("check_mixColumns passed\n");
+}
+
 int main(void) {
     time_t t;
     srand((unsigned) time(&t));
@@ -182,6 +300,7 @@ int main(void) {
     uint128_t out128[8];
     uint128_t out1282[8];
     uint128_t* inp128_cuda;
+    uint128_t* inp128_cuda2;
     uint128_t* out128_cuda;
     uint128_t* out128_cuda2;
     
@@ -191,6 +310,10 @@ int main(void) {
     int* ran_buf2 = (int*) raw2;
     //memset(ran_buf,0,16*8);
     //raw[0][0] = 0x80;
+    //for(int i=0; i<16*8; i++){
+    //    ((char*) raw)[i] = (char)i;
+    //    ((char*) raw2)[i] = (char)i;
+    //}
     for(int i = 0; i<8; i++){
         fill_random(ran_buf, 32);
         fill_random(ran_buf2, 32);
@@ -199,11 +322,15 @@ int main(void) {
     }        
     
     cudaMalloc((void**)&inp128_cuda, 16*8);
+    cudaMalloc((void**)&inp128_cuda2, 16*8);
     cudaMalloc((void**)&out128_cuda, 16*8);
     cudaMalloc((void**)&out128_cuda2, 16*8);
+    
+    cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
+    cudaMemcpy(inp128_cuda2, inp1282, 16*8, cudaMemcpyHostToDevice);
+
 
     // CHECK bitorder_transform
-    cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
     __test_bitorder_transform<<<1,1>>>((char*)((void*)inp128_cuda),out128_cuda);
     cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
     check_bitorder( (char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
@@ -214,23 +341,37 @@ int main(void) {
     check_bitreorder((char(*)) ((void*)inp128), (char(*)) ((void*)out1282));
 
     // CHECK addRoundKey
-    check_addRoundKey();
+    cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
+    __test_addRoundKey<<<1,1>>>(out128_cuda,inp128_cuda2);
+    cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
+    check_addRoundKey((unsigned char(*)[16])(void*)inp128,(unsigned char(*)[16])(void*)out128,(unsigned char(*)[16])(void*)inp1282);
 
     // CHECK subBytes
-    cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
-    __test_subBytes<<<1,1>>>(inp128_cuda);
-    cudaMemcpy(out128, inp128_cuda, 16*8, cudaMemcpyDeviceToHost);
-    check_subBytes((char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
+    cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
+    __test_subBytes<<<1,1>>>(out128_cuda);
+    cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
+    check_subBytes((unsigned char(*)[16]) ((void*)inp128), (unsigned char(*)[16]) ((void*)out128));
 
     // CHECK shiftRows
-    cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
-    __test_shiftRows<<<1,1>>>(inp128_cuda);
-    cudaMemcpy(out128, inp128_cuda, 16*8, cudaMemcpyDeviceToHost);
+    cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
+    __test_shiftRows<<<1,1>>>(out128_cuda);
+    cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
     check_shiftRows((char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
+
+    // CHECK mixColumns
+    cudaMemcpy(out128_cuda, out128, 16*8, cudaMemcpyHostToDevice);
+    cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
+    __test_bitorder_transform<<<1,1>>>((char*)((void*)inp128_cuda),out128_cuda);
+    cudaMemcpy(out128_cuda2, out128_cuda, 16*8, cudaMemcpyDeviceToDevice);
+    __test_mixColumns<<<1,1>>>(out128_cuda2);
+    cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
+    cudaMemcpy(out1282, out128_cuda2, 16*8, cudaMemcpyDeviceToHost);
+    check_mixColumns((unsigned char(*)[16]) ((void*)out128), (unsigned char(*)[16]) ((void*)out1282));
 
     // CHECK encrypt
     check_encrypt((char*)raw, (char*)raw2);
-    //cudaDeviceSynchronize();
+    
+    cudaDeviceSynchronize();
 
     cudaFree(out128_cuda2);
     cudaFree(out128_cuda);

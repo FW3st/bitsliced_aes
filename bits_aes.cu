@@ -90,43 +90,69 @@ __device__ void bitorder_transform(char* plain, uint128_t* a){
     swapByte(a+3, a+7, m3, 4);
 }
 
-// from [13] A Fast and Cache-Timing Resistant Implementation of the AES
+__device__ static uint128_t rot(uint128_t a, const int N){
+    return a>>N | a<<(128-N);
+}
+
 __device__ void mixColumns(uint128_t a[8]){
-    uint128_t t0 = a[0] ^ (a[0] << 32);
-    uint128_t t1 = (a[1] << 32) ^ (a[1] << 64);
-    uint128_t t2 = a[2] ^ (a[2] << 32);
-    uint128_t t3 = (a[3] << 32) ^ (a[3] << 64);
-    uint128_t t4 = a[4] ^ (a[4] << 32);
-    uint128_t t5 = (a[5] << 32) ^ (a[5] << 64);
-    uint128_t t6 = a[6] ^ (a[6] << 32);
-    uint128_t t7 = (a[7] << 32) ^ (a[7] << 64);
+    static const int N1 = 32;
+    static const int N2 = 32*2;
+    uint128_t t0 = (a[7]^rot(a[7],N1))^rot(a[0],N1)^rot((a[0]^rot(a[0],N1)),N2);
+    uint128_t t1 = (a[0]^rot(a[0],N1))^(a[7]^rot(a[7],N1))^rot(a[1],N1)^rot((a[1]^rot(a[1],N1)),N2);
+    uint128_t t2 = (a[1]^rot(a[1],N1))^rot(a[2],N1)^rot((a[2]^rot(a[2],N1)),N2);
+    uint128_t t3 = (a[2]^rot(a[2],N1))^(a[7]^rot(a[7],N1))^rot(a[3],N1)^rot((a[3]^rot(a[3],N1)),N2);
+    uint128_t t4 = (a[3]^rot(a[3],N1))^(a[7]^rot(a[7],N1))^rot(a[4],N1)^rot((a[4]^rot(a[4],N1)),N2);
+    uint128_t t5 = (a[4]^rot(a[4],N1))^rot(a[5],N1)^rot((a[5]^rot(a[5],N1)),N2);
+    uint128_t t6 = (a[5]^rot(a[5],N1))^rot(a[6],N1)^rot((a[6]^rot(a[6],N1)),N2);
+    uint128_t t7 = (a[6]^rot(a[6],N1))^rot(a[7],N1)^rot((a[7]^rot(a[7],N1)),N2);
+    
+   a[0]=t0;
+   a[1]=t1;
+   a[2]=t2;
+   a[3]=t3;
+   a[4]=t4;
+   a[5]=t5;
+   a[6]=t6;
+   a[7]=t7;  
+}
+
+// from [13] A Fast and Cache-Timing Resistant Implementation of the AES
+__device__ void mixColumnsFAILS(uint128_t a[8]){
+    uint128_t t0 = a[0] ^ rot(a[0],32);
+    uint128_t t1 = rot(a[1],32) ^ rot(a[1],64);
+    uint128_t t2 = a[2] ^ rot(a[2],32);
+    uint128_t t3 = rot(a[3],32) ^ rot(a[3],64);
+    uint128_t t4 = a[4] ^ rot(a[4],32);
+    uint128_t t5 = rot(a[5],32) ^ rot(a[5],64);
+    uint128_t t6 = a[6] ^ rot(a[6],32);
+    uint128_t t7 = rot(a[7],32) ^ rot(a[7],64);
     
     a[2] ^= t1;
     t1 ^= t0;
-    t1 = t1<<32;
+    t1 = rot(t1,32);
     a[1] ^= t1;
-    t0 = t0 << 64;
+    t0 = rot(t0,64);
     a[0] ^= t0;
     a[4] ^= t3;
     t3 ^= t2;
-    t3 = t3 << 32;
+    t3 = rot(t3,32);
     a[3] ^= t3;
-    t2 = t2 <<64;
+    t2 = rot(t2,64);
     a[2] ^= t2;
     a[6] ^= t5;
     t5 ^= t4;
-    t5 = t5 << 32;
+    t5 = rot(t5,32);
     a[5] ^= t5;
-    t4 = t4 <<64;
+    t4 = rot(t4,64);
     a[4] ^= t4;
     a[0] ^= t7;
     a[1] ^= t7;
     a[3] ^= t7;
     a[4] ^= t7;
     t7 ^= t6;
-    t7 = t7 << 32;
+    t7 = rot(t7,32);
     a[7] ^= t7;
-    t6 = t6 << 64;
+    t6 = rot(t6,64);
     a[6] ^= t6;    
 }
 
@@ -368,7 +394,6 @@ int main(void) {
     cudaSetDevice(DEVICE);
     int num_threads = get_num_threads();
     
-        
     for(int i=0; i<KEY_SIZE; i++){
         key[i] = (char)i;
     }
