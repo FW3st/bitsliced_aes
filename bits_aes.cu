@@ -5,7 +5,6 @@
 
 #define WORDSIZE 32
 #define KEY_SIZE 128
-//#define DEVICE   0 moved to device.h
 
 #define NK KEY_SIZE/WORDSIZE
 #define NR (NK + 6)
@@ -13,9 +12,16 @@
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
 
-#define NUM_BLOCKS 128
+#define NUM_BLOCKS 12800000
 #define BLOCK_SIZE 128
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
+
+
+void printError(){
+    cudaError_t error = cudaGetLastError ();
+    printf("error: %s\n",cudaGetErrorName(error) );
+    printf("error: %s\n",cudaGetErrorString(error) );
+}
 
 __device__ unsigned char get_byte128(uint128_t a[8], int n){
     n = n/16+8*(n%16);
@@ -377,10 +383,12 @@ __device__ void addRoundKey(uint128_t a[8], uint128_t key[8]){
     }
 }
 
-__global__ void encrypt(char*plain, uint128_t* keys, char*cypher) {
+__global__ void encrypt(char* plain, uint128_t* keys, char* cypher){
     uint128_t a[8];
     plain = plain + (16*8) * (blockIdx.x*blockDim.x + threadIdx.x);
     cypher = cypher + (16*8) * (blockIdx.x*blockDim.x + threadIdx.x);
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+
     
     bitorder_transform(plain, a);
     addRoundKey(a, keys);
@@ -570,6 +578,8 @@ int main(void) {
     cudaEvent_t start, stop;
     float time;
     
+    cudaSetDevice(DEVICE);
+    
     cudaMalloc((void**)&d_plain, PLAIN_SIZE);
     cudaMalloc((void**)&d_cypher, PLAIN_SIZE);
     cudaMalloc((void**)&d_roundkey, ROUND_KEY_SIZE);
@@ -580,8 +590,7 @@ int main(void) {
     unsigned char* roundkey = (unsigned char*) malloc(ROUND_KEY_SIZE);
     unsigned char* bs_roundkey = (unsigned char*) malloc(ROUND_KEY_SIZE);
 
-    cudaSetDevice(DEVICE);
-    int num_threads = get_num_threads();
+    //int num_threads = get_num_threads();
     
     for(int i=0; i<KEY_SIZE; i++){
         key[i] = (char)i;
@@ -596,23 +605,27 @@ int main(void) {
 
     cudaMemcpy(d_plain, plain, PLAIN_SIZE, cudaMemcpyHostToDevice);
     cudaMemcpy(d_roundkey, bs_roundkey, ROUND_KEY_SIZE, cudaMemcpyHostToDevice);
+    
+    printError();
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord( start, 0 );
+    
     encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
     cudaEventRecord( stop, 0 );
     cudaEventSynchronize( stop );
+    printError();
     cudaEventElapsedTime( &time, start, stop );
     cudaMemcpy(cypher, d_cypher, PLAIN_SIZE, cudaMemcpyDeviceToHost);
     
     //dont optimize code out
-    char sum =0;
-    for(int i=0; i<PLAIN_SIZE; i++){
-        sum+= cypher[i];
-    }
-    printf("%c\n", sum);
+    //char sum =0;
+    //for(int i=0; i<PLAIN_SIZE; i++){
+    //    sum+= cypher[i];
+    //}
+    //printf("%c\n", sum);
     printf("%i bytes in %f ms\n", PLAIN_SIZE, time);
-    printf("Makes %f MiB/s\n", PLAIN_SIZE*1000/time/1024/1024);
+    printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8);
     cudaEventDestroy( start );
     cudaEventDestroy( stop );
     cudaFree(d_roundkey); 

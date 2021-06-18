@@ -87,10 +87,6 @@ uint128_t touint128(void* ar){
     return ret;
 }
 
-void printError(){
-    cudaError_t error = cudaGetLastError ();
-    printf("error: %s\n",cudaGetErrorName(error) );
-}
 
 void fill_random(int* ar, int len){
     for(int i=0; i<len; i++){
@@ -168,9 +164,7 @@ void check_encrypt(char* plain, unsigned char* key){
 
     cudaMemcpy(d_plain, plain, 16*8 * NUM_BLOCKS, cudaMemcpyHostToDevice);
     cudaMemcpy(d_roundkey, bs_roundkeys, 1408, cudaMemcpyHostToDevice);
-
     encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
-
     cudaMemcpy(bs_out, d_cypher, 16*8*NUM_BLOCKS, cudaMemcpyDeviceToHost);
     
     if(memcmp(bs_out,out,16*8*(NUM_BLOCKS))==0){
@@ -296,8 +290,8 @@ int main(void) {
     uint128_t* out128_cuda;
     uint128_t* out128_cuda2;
     
-    char (*raw)[16] = (char(*)[16]) malloc(16*8*NUM_BLOCKS);
-    char (*raw2)[16] = (char(*)[16]) malloc(16*8);
+    char *raw = (char*) malloc(16*8*NUM_BLOCKS);
+    unsigned char *raw2 = (unsigned char*) malloc(16*8);
     int* ran_buf = (int*) raw;
     int* ran_buf2 = (int*) raw2;
     //memset(ran_buf,0,16*8);
@@ -334,6 +328,7 @@ int main(void) {
     cudaMemcpy(out1282, out128_cuda2, 16*8, cudaMemcpyDeviceToHost);
     check_bitreorder((char(*)) ((void*)inp128), (char(*)) ((void*)out1282));
 
+
     // CHECK addRoundKey
     cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
     __test_addRoundKey<<<1,1>>>(out128_cuda,inp128_cuda2);
@@ -363,7 +358,7 @@ int main(void) {
     check_mixColumns((unsigned char(*)[16]) ((void*)out128), (unsigned char(*)[16]) ((void*)out1282));
 
     // CHECK encrypt
-    check_encrypt((char*)raw, (unsigned char*)raw2);
+    check_encrypt(raw, raw2);
     
     cudaDeviceSynchronize();
 
