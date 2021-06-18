@@ -14,15 +14,15 @@
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
 
-#define NUM_BLOCKS 1280000
-#define BLOCK_SIZE 128
+#define NUM_BLOCKS 15625000lu
+#define BLOCK_SIZE 128lu
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
 
 void printError(){
     cudaError_t error = cudaGetLastError ();
-    printf("error: %s\n",cudaGetErrorName(error) );
-    printf("error: %s\n",cudaGetErrorString(error) );
+    printf("error: %s\n",cudaGetErrorName(error));
+    printf("error: %s\n",cudaGetErrorString(error));
 }
 
 __device__ unsigned char get_byte128(uint128_t a[8], int n){
@@ -467,7 +467,7 @@ void bitslice_key(unsigned char exkey[176], unsigned char slicedkey[11][8][16]){
 
 static inline uint32_t bit_length(const uint32_t x) {
   uint32_t y;
-  asm ( "\tbsr %1, %0\n"
+  asm ("\tbsr %1, %0\n"
       : "=r"(y)
       : "r" (x)
   );
@@ -599,7 +599,7 @@ int main(void) {
     create_round_key(key, roundkey);
     bitslice_key(roundkey, (unsigned char (*)[8][16])bs_roundkey);
 
-    for(int i=0; i<PLAIN_SIZE; i++){
+    for(unsigned long i=0; i<PLAIN_SIZE; i++){
         plain[i] = (char)i;
     }
 
@@ -608,19 +608,19 @@ int main(void) {
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    cudaEventRecord( start, 0 );
+    cudaEventRecord(start, 0);
     encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
-    cudaEventRecord( stop, 0 );
-    cudaEventSynchronize( stop );
-    cudaEventElapsedTime( &time, start, stop );
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&time, start, stop);
     
     cudaMemcpy(cypher, d_cypher, PLAIN_SIZE, cudaMemcpyDeviceToHost);
     
-    printf("GPU: %i Mbytes in %f ms\n", PLAIN_SIZE/1000/1000, time);
+    printf("GPU: %lu Mbytes in %f ms\n", PLAIN_SIZE/1000/1000, time);
     printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8);
     
-    cudaEventDestroy( start );
-    cudaEventDestroy( stop );
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
     cudaFree(d_roundkey); 
     cudaFree(d_cypher);
     cudaFree(d_plain);
@@ -636,14 +636,19 @@ int main(void) {
   
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
     startav = clock();
-    for(int i=0; i<8*NUM_BLOCKS; i++){
+    for(unsigned long i=0; i<8*NUM_BLOCKS; i++){
         aes_cbc_enc_128(plain+16*i, iv, avx_roundkeys.enc_keys,out+16*i, 16);
     }
     endav = clock();
     cpu_time_usedav = ((double) (endav - startav)) / CLOCKS_PER_SEC;
-    printf("AVX: %i Mbytes in %f s\n", PLAIN_SIZE/1000/1000, cpu_time_usedav);
+    printf("AVX: %lu Mbytes in %f s\n", PLAIN_SIZE/1000/1000, cpu_time_usedav);
     printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE/1000/time/1000/1000*8);
     free(out);
+    
+    free(bs_roundkey);
+    free(roundkey);
+    free(key);
+    free(cypher);
     return 0;
 }
 #endif
