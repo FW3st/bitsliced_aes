@@ -590,12 +590,10 @@ int main(void) {
     create_round_key(key, roundkey);
     bitslice_key(roundkey, (unsigned char (*)[8][16])bs_roundkey);
 
-    for(int i=0; i<BLOCK_SIZE; i++){
-        plain[i] = (char)0;
+    for(int i=0; i<PLAIN_SIZE; i++){
+        plain[i] = (char)i;
     }
-    for(int i=1; i<NUM_BLOCKS; i++){
-        memcpy(plain+i*BLOCK_SIZE, plain, BLOCK_SIZE);
-    }
+
     cudaMemcpy(d_plain, plain, PLAIN_SIZE, cudaMemcpyHostToDevice);
     cudaMemcpy(d_roundkey, bs_roundkey, ROUND_KEY_SIZE, cudaMemcpyHostToDevice);
     cudaEventCreate(&start);
@@ -613,7 +611,8 @@ int main(void) {
         sum+= cypher[i];
     }
     printf("%c\n", sum);
-    printf("took %f seconds\n", time);
+    printf("%i bytes in %f ms\n", PLAIN_SIZE, time);
+    printf("Makes %f MiB/s\n", PLAIN_SIZE*1000/time/1024/1024);
     cudaEventDestroy( start );
     cudaEventDestroy( stop );
     cudaFree(d_roundkey); 
