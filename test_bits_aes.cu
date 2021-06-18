@@ -138,20 +138,19 @@ void check_encrypt(char* plain, unsigned char* key){
     //intel avx cbc aes, n times without IV ~> ecb
     struct cbc_key_data avx_roundkeys;
     uint8_t iv[16];
-    char out[16*8];
+    char out[16*8*NUM_BLOCKS];
     memset(iv, 0, 128);
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
-    for(int i=0; i<8; i++){
+    for(int i=0; i<8*NUM_BLOCKS; i++){
         aes_cbc_enc_128(plain+16*i, iv, avx_roundkeys.enc_keys,out+16*i, 16);
     }
     
     //bitsliced aes
-    char bs_out[16*8];
+    char bs_out[16*8*NUM_BLOCKS];
     char* d_plain;
     uint128_t* d_roundkey;
     char* d_cypher;
     unsigned char* roundkeys = (unsigned char*) malloc(176);
-    memset(roundkeys, 'a', 176);
     unsigned char* bs_roundkeys = (unsigned char*) malloc(1408);
     create_round_key(key, roundkeys);
         
@@ -162,26 +161,26 @@ void check_encrypt(char* plain, unsigned char* key){
     }
     bitslice_key(roundkeys, (unsigned char (*)[8][16])bs_roundkeys);
     
-  //for(int i=0; i<8;i++)
-  //printHex(bs_roundkeys[10][i],16);
-//printf("_____\n");
     
-    cudaMalloc((void**)&d_plain, 16*8);
-    cudaMalloc((void**)&d_cypher, 16*8);
+    cudaMalloc((void**)&d_plain, 16*8 * NUM_BLOCKS);
+    cudaMalloc((void**)&d_cypher, 16*8 * NUM_BLOCKS);
     cudaMalloc((void**)&d_roundkey, 1408);
 
-    cudaMemcpy(d_plain, plain, 16*8, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_plain, plain, 16*8 * NUM_BLOCKS, cudaMemcpyHostToDevice);
     cudaMemcpy(d_roundkey, bs_roundkeys, 1408, cudaMemcpyHostToDevice);
 
     encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
 
-    cudaMemcpy(bs_out, d_cypher, 16*8, cudaMemcpyDeviceToHost);
+    cudaMemcpy(bs_out, d_cypher, 16*8*NUM_BLOCKS, cudaMemcpyDeviceToHost);
     
-    if(memcmp(bs_out,out,16*8)==0){
+    if(memcmp(bs_out,out,16*8*(NUM_BLOCKS))==0){
         printf("Encrypt passed\n");
     } else {
         printf("Encrypt failed\n");
     }
+    cudaFree(d_plain);
+    cudaFree(d_cypher);
+    cudaFree(d_roundkey);
 }
 __global__ void __test_addRoundKey(uint128_t a[8], uint128_t key[8]){
     addRoundKey(a, key);
@@ -297,19 +296,21 @@ int main(void) {
     uint128_t* out128_cuda;
     uint128_t* out128_cuda2;
     
-    char (*raw)[16] = (char(*)[16]) malloc(16*8);
+    char (*raw)[16] = (char(*)[16]) malloc(16*8*NUM_BLOCKS);
     char (*raw2)[16] = (char(*)[16]) malloc(16*8);
     int* ran_buf = (int*) raw;
     int* ran_buf2 = (int*) raw2;
     //memset(ran_buf,0,16*8);
     //raw[0][0] = 0x80;
-    for(int i=0; i<16*8; i++){
+    for(int i=0; i<16*8*NUM_BLOCKS; i++){
         ((char*) raw)[i] = (char)i+10;
+    }
+    for(int i=0; i<16*8; i++){
         ((char*) raw2)[i] = (char)i*1;
     }
     for(int i = 0; i<8; i++){
-        fill_random(ran_buf, 32);
-        fill_random(ran_buf2, 32);
+        //fill_random(ran_buf, 32);
+        //fill_random(ran_buf2, 32);
         inp128[i] = touint128(ran_buf+4*i);
         inp1282[i] = touint128(ran_buf2+4*i);
     }        
