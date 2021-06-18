@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "cuda_uint128.h"
+#include <time.h>
 #include "device.h"
+#include "aes_cbc.h"
 
 #define WORDSIZE 32
 #define KEY_SIZE 128
@@ -12,7 +14,7 @@
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
 
-#define NUM_BLOCKS 12800000
+#define NUM_BLOCKS 1280000
 #define BLOCK_SIZE 128
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
@@ -387,8 +389,6 @@ __global__ void encrypt(char* plain, uint128_t* keys, char* cypher){
     uint128_t a[8];
     plain = plain + (16*8) * (blockIdx.x*blockDim.x + threadIdx.x);
     cypher = cypher + (16*8) * (blockIdx.x*blockDim.x + threadIdx.x);
-    int id = (blockIdx.x*blockDim.x + threadIdx.x);
-
     
     bitorder_transform(plain, a);
     addRoundKey(a, keys);
@@ -406,7 +406,7 @@ __global__ void encrypt(char* plain, uint128_t* keys, char* cypher){
 
 void subWord(unsigned char word[4], unsigned char result[4]){
 
-  unsigned char sbox[16][16] = {{0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76},
+  static const unsigned char sbox[16][16] = {{0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76},
                                 {0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0},
                                 {0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15},
                                 {0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75},
@@ -605,32 +605,45 @@ int main(void) {
 
     cudaMemcpy(d_plain, plain, PLAIN_SIZE, cudaMemcpyHostToDevice);
     cudaMemcpy(d_roundkey, bs_roundkey, ROUND_KEY_SIZE, cudaMemcpyHostToDevice);
-    
-    printError();
+
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord( start, 0 );
-    
     encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
     cudaEventRecord( stop, 0 );
     cudaEventSynchronize( stop );
-    printError();
     cudaEventElapsedTime( &time, start, stop );
+    
     cudaMemcpy(cypher, d_cypher, PLAIN_SIZE, cudaMemcpyDeviceToHost);
     
-    //dont optimize code out
-    //char sum =0;
-    //for(int i=0; i<PLAIN_SIZE; i++){
-    //    sum+= cypher[i];
-    //}
-    //printf("%c\n", sum);
-    printf("%i bytes in %f ms\n", PLAIN_SIZE, time);
+    printf("GPU: %i Mbytes in %f ms\n", PLAIN_SIZE/1000/1000, time);
     printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8);
+    
     cudaEventDestroy( start );
     cudaEventDestroy( stop );
     cudaFree(d_roundkey); 
     cudaFree(d_cypher);
-    cudaFree(d_plain); 
+    cudaFree(d_plain);
+    
+    //BENCH AVX AES
+    clock_t startav, endav;
+    double cpu_time_usedav;
+    struct cbc_key_data avx_roundkeys;
+
+    uint8_t iv[16];
+    char* out = (char*)malloc(16*8*NUM_BLOCKS);
+    memset(iv, 0, 16);
+  
+    aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
+    startav = clock();
+    for(int i=0; i<8*NUM_BLOCKS; i++){
+        aes_cbc_enc_128(plain+16*i, iv, avx_roundkeys.enc_keys,out+16*i, 16);
+    }
+    endav = clock();
+    cpu_time_usedav = ((double) (endav - startav)) / CLOCKS_PER_SEC;
+    printf("AVX: %i Mbytes in %f s\n", PLAIN_SIZE/1000/1000, cpu_time_usedav);
+    printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE/1000/time/1000/1000*8);
+    free(out);
     return 0;
 }
 #endif

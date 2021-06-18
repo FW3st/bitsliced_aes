@@ -6,6 +6,6 @@ then
     ./test
 else
     echo "Compile AES:"
-    nvcc -o aes bits_aes.cu -I CUDA-uint128
+    nvcc -o aes bits_aes.cu -I CUDA-uint128 -I isa-l_crypto/include -L isa-l_crypto/bin -lisal_crypto
     ./aes
 fi
