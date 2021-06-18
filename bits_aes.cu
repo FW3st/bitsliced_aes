@@ -17,15 +17,59 @@
 #define BLOCK_SIZE 128
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
-__device__ void cu_printHex(char* ptr, int len){
+__device__ unsigned char get_byte128(uint128_t a[8], int n){
+    n = n/16+8*(n%16);
+    unsigned char ret = 0;
+    
+    for(int i = 7; i>=0; i--){
+        if(n>=64){
+           ret = (ret << 1) | ((unsigned int)(a[i].hi>>(n%64))&1);
+        }else{
+           ret = (ret << 1) | ((unsigned int)(a[i].lo>>(n%64))&1); 
+        }
+    }
+    return ret;    
+}
+
+__device__ void cu_printHex(unsigned char* ptr, int len){
     for(int i=0; i<len; i++){
         printf("%02x ", ptr[i]&0xff);
-        if(i%4 == 0 && i != 0) printf("| ");
+        if(i%4 == 3) printf("| ");
     }
     printf("\n");
 }
 
-void printHex(char* ptr, int len){
+__device__ void cu_print_state(unsigned char* a){
+    cu_printHex(a,16);
+    cu_printHex(a+1,16);
+    cu_printHex(a+2,16);
+    cu_printHex(a+3,16);
+    cu_printHex(a+4,16);
+    cu_printHex(a+5,16);
+    cu_printHex(a+6,16);
+    cu_printHex(a+7,16);
+    printf("____________________\n");
+}
+
+__device__ void cu_printHex128(uint128_t* a, int l){
+    cu_printHex((unsigned char*)(void*)a,l);
+}
+
+__device__ void cu_print_state128(uint128_t* a){
+    cu_printHex128(a,16);
+    cu_printHex128(a+1,16);
+    cu_printHex128(a+2,16);
+    cu_printHex128(a+3,16);
+    cu_printHex128(a+4,16);
+    cu_printHex128(a+5,16);
+    cu_printHex128(a+6,16);
+    cu_printHex128(a+7,16);
+    printf("____________________\n");
+}
+
+
+
+void printHex(unsigned char* ptr, int len){
     for(int i=0; i<len; i++){
         printf("%02x ", ptr[i]&0xff);
         if(i%4 == 3) printf("| ");
@@ -38,6 +82,13 @@ __device__ static void swapByte(uint128_t* a , uint128_t* b, uint128_t m, int n)
     uint128_t t = ((((*a)>>n)^(*b)))&m;
     *b = (*b) ^ t;
     *a = (*a) ^ (t << n);
+}
+
+
+__device__ void swap(char* a, int i, int j){
+    char tmp = a[i];
+    a[i] = a[j];
+    a[j]=tmp;
 }
 
 __device__ void bitorder_retransform(char* plain, uint128_t* a){
@@ -61,17 +112,36 @@ __device__ void bitorder_retransform(char* plain, uint128_t* a){
     swapByte(a+6, a+7, m1, 1);
 
     for(int i=0; i<8; i++){
-        ((uint128_t*)plain)[i] = a[7-i];
-    } 
+        ((uint128_t*)plain)[i] = a[i];
+    }
+    for(int i=0; i<8; i++){
+        swap(plain,i*16+1,i*16+4);
+        swap(plain,i*16+2,i*16+8);
+        swap(plain,i*16+3,i*16+12);
+        swap(plain,i*16+6,i*16+9);
+        swap(plain,i*16+13,i*16+7);
+        swap(plain,i*16+14,i*16+11);
+    }
 }
 
+
 __device__ void bitorder_transform(char* plain, uint128_t* a){
+    for(int i=0; i<8; i++){
+        swap(plain,i*16+1,i*16+4);
+        swap(plain,i*16+2,i*16+8);
+        swap(plain,i*16+3,i*16+12);
+        swap(plain,i*16+6,i*16+9);
+        swap(plain,i*16+13,i*16+7);
+        swap(plain,i*16+14,i*16+11);
+    }
+    
+    
     const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
 
     for(int i=0; i<8; i++){
-        a[7-i] = ((uint128_t*)plain)[i];
+        a[i] = ((uint128_t*)plain)[i];
     }
     
     swapByte(a,   a+1, m1, 1);
@@ -307,24 +377,23 @@ __device__ void addRoundKey(uint128_t a[8], uint128_t key[8]){
     }
 }
 
-__global__ void encrypt(char*plain, uint128_t keys[ROUND_KEY_COUNT][8], char*cypher) {
+__global__ void encrypt(char*plain, uint128_t* keys, char*cypher) {
     uint128_t a[8];
+
     plain = plain + (128*8) * (blockIdx.x*blockDim.x + threadIdx.x);
     
     bitorder_transform(plain, a);
-    
-    addRoundKey(a, keys[0]);
-    for(int i=0; i< NR; i++){
+
+    addRoundKey(a, keys);
+    for(int i=1; i< NR; i++){
         subBytes(a);
         shiftRows(a);
         mixColumns(a);
-        addRoundKey(a, keys[i]);
+        addRoundKey(a, keys+i*8);
     }
-
     subBytes(a);
     shiftRows(a);
-    addRoundKey(a, keys[NR]);
-
+    addRoundKey(a, keys+8*10);
     bitorder_retransform(cypher, (uint128_t*)a);
 }
 
@@ -352,45 +421,76 @@ void subWord(unsigned char word[4], unsigned char result[4]){
   }
 }
 
-void bitslice_key(unsigned char exkey[176], unsigned char slicedkey[8][176]){
+void bitslice_key(unsigned char exkey[176], unsigned char slicedkey[11][8][16]){
   for(int i=0; i<176; i++){
     if((exkey[i] & 0x80) != 0)
-      slicedkey[7][i] = 0xff;
+      slicedkey[i/16][7][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[7][i] = 0x00;
+      slicedkey[i/16][7][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x40) != 0)
-      slicedkey[6][i] = 0xff;
+      slicedkey[i/16][6][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[6][i] = 0x00;
+      slicedkey[i/16][6][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x20) != 0)
-      slicedkey[5][i] = 0xff;
+      slicedkey[i/16][5][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[5][i] = 0x00;
+      slicedkey[i/16][5][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x10) != 0)
-      slicedkey[4][i] = 0xff;
+      slicedkey[i/16][4][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[4][i] = 0x00;
+      slicedkey[i/16][4][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x08) != 0)
-      slicedkey[3][i] = 0xff;
+      slicedkey[i/16][3][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[3][i] = 0x00;
+      slicedkey[i/16][3][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x04) != 0)
-      slicedkey[2][i] = 0xff;
+      slicedkey[i/16][2][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[2][i] = 0x00;
+      slicedkey[i/16][2][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x02) != 0)
-      slicedkey[1][i] = 0xff;
+      slicedkey[i/16][1][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[1][i] = 0x00;
+      slicedkey[i/16][1][(i%4)*4+(i%16)/4] = 0x00;
     if((exkey[i] & 0x01) != 0)
-      slicedkey[0][i] = 0xff;
+      slicedkey[i/16][0][(i%4)*4+(i%16)/4] = 0xff;
     else
-      slicedkey[0][i] = 0x00;
+      slicedkey[i/16][0][(i%4)*4+(i%16)/4] = 0x00;
   }
 }
 
-// TODO: consider, keys need to be bit sliced
-void create_round_key(char* key, char* roundkey){
+static inline uint32_t bit_length(const uint32_t x) {
+  uint32_t y;
+  asm ( "\tbsr %1, %0\n"
+      : "=r"(y)
+      : "r" (x)
+  );
+  return y+1;
+}
+
+unsigned char modg(unsigned int a){
+    unsigned int m = 0b100011011;
+    unsigned int end = m;
+    if(a < m){
+        if (a > 255){
+            a = a ^ m;
+        }
+        return (unsigned char)a;
+    }
+    m = m << (bit_length(a) - bit_length(m));
+    unsigned int mask = 1 << (bit_length(m) - 1);
+    while(1){
+        if((a & mask) != 0){
+            a ^= m;
+        }
+        if(m == end){
+            return (unsigned char)a;
+        }
+        m >>= 1;
+        mask >>= 1;
+    }
+}
+
+void create_round_key(unsigned char* key, unsigned char* roundkey){
   //Die Runden anhand des Schlüssels bestimmen
   int rounds = 10;
   if(KEY_SIZE == 192)
@@ -402,10 +502,7 @@ void create_round_key(char* key, char* roundkey){
   //Die ersten Schlüsselwords werden einfach übertragen
   for(int i = 0; i<number_key_words*4; i++)
     roundkey[i] = key[i];
-  //ToDo: Remove
-  for(int i = 0; i<number_key_words*4; i++)
-    printf("%x ", roundkey[i]);
-  printf("\r\n");
+
   //Berechnen der weiteren Keys
   unsigned char tmpL[4];
   unsigned char rC[4];
@@ -429,7 +526,7 @@ void create_round_key(char* key, char* roundkey){
       tmpL[2] = subL[3]^rC[2];
       tmpL[3] = subL[0]^rC[3];
     }
-    if(number_key_words == 8 && i%8 == 4){
+    else if(number_key_words == 8 && i%8 == 4){
       subWord(tmpL, subL);
       tmpL[0] = subL[0];
       tmpL[1] = subL[1];
