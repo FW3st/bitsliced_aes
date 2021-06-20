@@ -1,7 +1,9 @@
 #define TEST
 #include "bits_aes.cu"
 #include "aes_cbc.h"
+#undef NUM_BLOCKS
 
+#define NUM_BLOCKS 1
 
 const uint8_t SBOX[16][16] = {{0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76},
         {0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0},
@@ -103,12 +105,10 @@ void check_bitorder(char (*raw)[16], char (*ord)[16]){
     for(int by=0; by<16; by++){
         for(int bi=0; bi<8; bi++){
             for(int d=0; d<8; d++){
-                x = (raw[d][by]>>bi)&1;
+                x = (raw[d][(by%4)*4+by/4]>>bi)&1;
                 y = (ord[bi][by]>>d)&1;
                 if(x!=y){
                     printf("check_bitorder failed\n");
-                    printf("x:%i, y:%i\n", x, y);
-                    printf("by:%i, by:%i, d:%i\n", by, bi,d);
                     return;
                 }
             }
@@ -180,13 +180,11 @@ __global__ void __test_addRoundKey(uint128_t a[8], uint128_t key[8]){
     addRoundKey(a, key);
 }
 
-void check_addRoundKey(unsigned char a[8][16], unsigned char s[8][16], unsigned char key[8][16]){
-    for(int i=0; i<8;i++){
-        for(int j=0; j<16; j++){
-            if((a[i][j]^key[i][j]) != s[i][j]){
-                printf("check_addRoundKey failed\n");
-                return;
-            }
+void check_addRoundKey(unsigned char* a, unsigned char* s, unsigned char* key){
+    for(int i=0; i<8*16;i++){
+        if((a[i]^key[i]) != s[i]){
+            printf("check_addRoundKey failed\n");
+            return;
         }
     }
     printf("check_addRoundKey passed\n");
@@ -290,6 +288,8 @@ int main(void) {
     uint128_t* out128_cuda;
     uint128_t* out128_cuda2;
     
+    cudaSetDevice(DEVICE);
+    
     char *raw = (char*) malloc(16*8*NUM_BLOCKS);
     unsigned char *raw2 = (unsigned char*) malloc(16*8);
     int* ran_buf = (int*) raw;
@@ -328,12 +328,11 @@ int main(void) {
     cudaMemcpy(out1282, out128_cuda2, 16*8, cudaMemcpyDeviceToHost);
     check_bitreorder((char(*)) ((void*)inp128), (char(*)) ((void*)out1282));
 
-
     // CHECK addRoundKey
     cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
     __test_addRoundKey<<<1,1>>>(out128_cuda,inp128_cuda2);
     cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
-    check_addRoundKey((unsigned char(*)[16])(void*)inp128,(unsigned char(*)[16])(void*)out128,(unsigned char(*)[16])(void*)inp1282);
+    check_addRoundKey((unsigned char*)(void*)inp128,(unsigned char*)(void*)out128,(unsigned char*)(void*)inp1282);
 
     // CHECK subBytes
     cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);

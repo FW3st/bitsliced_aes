@@ -86,20 +86,20 @@ void printHex(unsigned char* ptr, int len){
 }
 
 
-__device__ static void swapByte(uint128_t* a , uint128_t* b, uint128_t m, int n){
+__device__ static void swapByte(uint128_t* __restrict__  a , uint128_t* __restrict__  b, uint128_t m, int n){
     uint128_t t = ((((*a)>>n)^(*b)))&m;
     *b = (*b) ^ t;
     *a = (*a) ^ (t << n);
 }
 
 
-__device__ void swap(char* a, int i, int j){
+__device__ void swap(unsigned char* a, int i, int j){
     char tmp = a[i];
     a[i] = a[j];
     a[j]=tmp;
 }
 
-__device__ void bitorder_retransform(char* plain, uint128_t* a){
+__device__ void bitorder_retransform(char* __restrict__  plain, uint128_t* __restrict__  a){
     const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
@@ -120,36 +120,36 @@ __device__ void bitorder_retransform(char* plain, uint128_t* a){
     swapByte(a+6, a+7, m1, 1);
 
     for(int i=0; i<8; i++){
-        ((uint128_t*)plain)[i] = a[i];
+        swap((unsigned char*)(void*)&a[i], 1, 4);
+        swap((unsigned char*)(void*)&a[i], 2, 8);
+        swap((unsigned char*)(void*)&a[i], 3,12);
+        swap((unsigned char*)(void*)&a[i], 6, 9);
+        swap((unsigned char*)(void*)&a[i],13, 7);
+        swap((unsigned char*)(void*)&a[i],14,11);
     }
+    
     for(int i=0; i<8; i++){
-        swap(plain,i*16+1,i*16+4);
-        swap(plain,i*16+2,i*16+8);
-        swap(plain,i*16+3,i*16+12);
-        swap(plain,i*16+6,i*16+9);
-        swap(plain,i*16+13,i*16+7);
-        swap(plain,i*16+14,i*16+11);
+        ((uint128_t*)plain)[i] = a[i];
     }
 }
 
 
-__device__ void bitorder_transform(char* plain, uint128_t* a){
-    for(int i=0; i<8; i++){
-        swap(plain,i*16+1,i*16+4);
-        swap(plain,i*16+2,i*16+8);
-        swap(plain,i*16+3,i*16+12);
-        swap(plain,i*16+6,i*16+9);
-        swap(plain,i*16+13,i*16+7);
-        swap(plain,i*16+14,i*16+11);
-    }
-    
-    
+__device__ void bitorder_transform(char* __restrict__  plain, uint128_t* __restrict__  a){
     const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
 
     for(int i=0; i<8; i++){
         a[i] = ((uint128_t*)plain)[i];
+    }
+    
+    for(int i=0; i<8; i++){ //TODO improove
+        swap((unsigned char*)(void*)&a[i], 1, 4);
+        swap((unsigned char*)(void*)&a[i], 2, 8);
+        swap((unsigned char*)(void*)&a[i], 3,12);
+        swap((unsigned char*)(void*)&a[i], 6, 9);
+        swap((unsigned char*)(void*)&a[i],13, 7);
+        swap((unsigned char*)(void*)&a[i],14,11);
     }
     
     swapByte(a,   a+1, m1, 1);
@@ -379,16 +379,16 @@ __device__ void shiftRows(uint128_t a[8]){
     }
 }
 
-__device__ void addRoundKey(uint128_t a[8], uint128_t key[8]){
+__device__ void addRoundKey(uint128_t* __restrict__ a, uint128_t* __restrict__  key){
     for(int i=0; i<8; i++){
         a[i] ^= key[i];
     }
 }
 
-__global__ void encrypt(char* plain, uint128_t* keys, char* cypher){
+__global__ void encrypt(char* __restrict__  plain, uint128_t* __restrict__ keys, char* __restrict__ cypher){
     uint128_t a[8];
-    plain = plain + (16*8) * (blockIdx.x*blockDim.x + threadIdx.x);
-    cypher = cypher + (16*8) * (blockIdx.x*blockDim.x + threadIdx.x);
+    plain = plain + (16*8) * blockIdx.x;
+    cypher = cypher + (16*8) * blockIdx.x;
     
     bitorder_transform(plain, a);
     addRoundKey(a, keys);
@@ -589,8 +589,6 @@ int main(void) {
     unsigned char* key = (unsigned char*) malloc(KEY_SIZE);
     unsigned char* roundkey = (unsigned char*) malloc(ROUND_KEY_SIZE);
     unsigned char* bs_roundkey = (unsigned char*) malloc(ROUND_KEY_SIZE);
-
-    //int num_threads = get_num_threads();
     
     for(int i=0; i<KEY_SIZE; i++){
         key[i] = (char)i;
