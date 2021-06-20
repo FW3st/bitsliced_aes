@@ -5,8 +5,8 @@
 #include "device.h"
 #include "aes_cbc.h"
 
-#define GRAN32
-#define GRAN64
+//#define GRAN32
+//#define GRAN64
 #define GRAN128
 
 #ifdef GRAN32
@@ -23,8 +23,8 @@
 #define BITS  128
 #endif
 
-#define WORDSIZE 32
-#define KEY_SIZE 128
+#define WORDSIZE 32 //bit
+#define KEY_SIZE 128 //bit
 
 #define NK KEY_SIZE/WORDSIZE
 #define NR (NK + 6)
@@ -32,7 +32,7 @@
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
 
-#define NUM_BLOCKS 15625000lu
+#define NUM_BLOCKS 15625000lu*2
 #define BLOCK_SIZE 8 * BYTES
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
@@ -43,6 +43,7 @@ void printError(){
     printf("error: %s\n",cudaGetErrorString(error));
 }
 
+/*
 __device__ unsigned char get_byteword(TYPE a[8], int n){
     n = n/16+8*(n%16);
     unsigned char ret = 0;
@@ -56,6 +57,7 @@ __device__ unsigned char get_byteword(TYPE a[8], int n){
     }
     return ret;    
 }
+*/
 
 __device__ void cu_printHex(unsigned char* ptr, int len){
     for(int i=0; i<len; i++){
@@ -66,14 +68,14 @@ __device__ void cu_printHex(unsigned char* ptr, int len){
 }
 
 __device__ void cu_print_state(unsigned char* a){
-    cu_printHex(a,16);
-    cu_printHex(a+1*16,16);
-    cu_printHex(a+2*16,16);
-    cu_printHex(a+3*16,16);
-    cu_printHex(a+4*16,16);
-    cu_printHex(a+5*16,16);
-    cu_printHex(a+6*16,16);
-    cu_printHex(a+7*16,16);
+    cu_printHex(a,BYTES);
+    cu_printHex(a+1*BYTES,BYTES);
+    cu_printHex(a+2*BYTES,BYTES);
+    cu_printHex(a+3*BYTES,BYTES);
+    cu_printHex(a+4*BYTES,BYTES);
+    cu_printHex(a+5*BYTES,BYTES);
+    cu_printHex(a+6*BYTES,BYTES);
+    cu_printHex(a+7*BYTES,BYTES);
     printf("____________________\n");
 }
 
@@ -82,14 +84,14 @@ __device__ void cu_printHexword(TYPE* a, int l){
 }
 
 __device__ void cu_print_stateword(TYPE* a){
-    cu_printHexword(a,16);
-    cu_printHexword(a+1,16);
-    cu_printHexword(a+2,16);
-    cu_printHexword(a+3,16);
-    cu_printHexword(a+4,16);
-    cu_printHexword(a+5,16);
-    cu_printHexword(a+6,16);
-    cu_printHexword(a+7,16);
+    cu_printHexword(a,BYTES);
+    cu_printHexword(a+1,BYTES);
+    cu_printHexword(a+2,BYTES);
+    cu_printHexword(a+3,BYTES);
+    cu_printHexword(a+4,BYTES);
+    cu_printHexword(a+5,BYTES);
+    cu_printHexword(a+6,BYTES);
+    cu_printHexword(a+7,BYTES);
     printf("____________________\n");
 }
 
@@ -103,49 +105,78 @@ void printHex(unsigned char* ptr, int len){
 }
 
 void print_state(unsigned char* a){
-    printHex(a,16);
-    printHex(a+1*16,16);
-    printHex(a+2*16,16);
-    printHex(a+3*16,16);
-    printHex(a+4*16,16);
-    printHex(a+5*16,16);
-    printHex(a+6*16,16);
-    printHex(a+7*16,16);
+    printHex(a,BYTES);
+    printHex(a+1*BYTES,BYTES);
+    printHex(a+2*BYTES,BYTES);
+    printHex(a+3*BYTES,BYTES);
+    printHex(a+4*BYTES,BYTES);
+    printHex(a+5*BYTES,BYTES);
+    printHex(a+6*BYTES,BYTES);
+    printHex(a+7*BYTES,BYTES);
     printf("____________________\n");
 }
 
-__device__ static void swapByte(TYPE* __restrict__  a , TYPE* __restrict__  b, TYPE m, int n){
+__device__ static void SwapMove(TYPE* __restrict__  a , TYPE* __restrict__  b, TYPE m, int n){
     TYPE t = ((((*a)>>n)^(*b)))&m;
     *b = (*b) ^ t;
     *a = (*a) ^ (t << n);
 }
 
+#ifndef GRAN128
+static __device__ unsigned char bitshift(unsigned char c, int n){
+    if(n>=0){
+        return c << n;
+    } else {
+        return c >> n;
+    }
+}
+#endif
 
 __device__ void swap(unsigned char* a, int i, int j){
+    #ifdef GRAN128
     unsigned char tmp = a[i];
     a[i] = a[j];
     a[j]=tmp;
+    #elif defined(GRAN64)
+    unsigned char tmp = a[i/2];
+    a[i/2] = a[i/2]&(0xf<<1-i%2) | bitshift(a[j/2]&(0xf<<j%2),i%2-j%2);
+    a[j/2] = a[j/2]&(0xf<<1-j%2) | bitshift(   tmp&(0xf<<i%2),j%2-i%2);
+    #else
+    unsigned char tmp = a[i/4];
+    a[i/4] = a[i/4]&~(0xf<<i%4) | bitshift(a[j/4]&(0xf<<j%4),i%4-j%4);
+    a[j/4] = a[j/4]&~(0xf<<i%4) | bitshift(   tmp&(0xf<<j%4),i%4-j%4);
+    #endif
 }
 
 __device__ void bitorder_retransform(unsigned char* __restrict__  plain, TYPE* __restrict__  a){//TODO
+    #ifdef GRAN128
     const TYPE m1 = (TYPE) 0x5555555555555555 << (BYTES/2) | 0x5555555555555555;
     const TYPE m2 = (TYPE) 0x3333333333333333 << (BYTES/2) | 0x3333333333333333;
     const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f << (BYTES/2) | 0x0f0f0f0f0f0f0f0f;
+    #elif defined(GRAN64)
+    const TYPE m1 = (TYPE) 0x5555555555555555;
+    const TYPE m2 = (TYPE) 0x3333333333333333;
+    const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f;
+    #else
+    const TYPE m1 = (TYPE) 0x55555555;
+    const TYPE m2 = (TYPE) 0x33333333;
+    const TYPE m3 = (TYPE) 0x0f0f0f0f;
+    #endif
 
-    swapByte(a,   a+4, m3, 4);
-    swapByte(a+1, a+5, m3, 4);
-    swapByte(a+2, a+6, m3, 4);
-    swapByte(a+3, a+7, m3, 4);
+    SwapMove(a,   a+4, m3, 4);
+    SwapMove(a+1, a+5, m3, 4);
+    SwapMove(a+2, a+6, m3, 4);
+    SwapMove(a+3, a+7, m3, 4);
     
-    swapByte(a,   a+2, m2, 2);
-    swapByte(a+1, a+3, m2, 2);
-    swapByte(a+4, a+6, m2, 2);
-    swapByte(a+5, a+7, m2, 2);
+    SwapMove(a,   a+2, m2, 2);
+    SwapMove(a+1, a+3, m2, 2);
+    SwapMove(a+4, a+6, m2, 2);
+    SwapMove(a+5, a+7, m2, 2);
     
-    swapByte(a,   a+1, m1, 1);
-    swapByte(a+2, a+3, m1, 1);
-    swapByte(a+4, a+5, m1, 1);
-    swapByte(a+6, a+7, m1, 1);
+    SwapMove(a,   a+1, m1, 1);
+    SwapMove(a+2, a+3, m1, 1);
+    SwapMove(a+4, a+5, m1, 1);
+    SwapMove(a+6, a+7, m1, 1);
 
     for(int i=0; i<8; i++){
         swap((unsigned char*)(void*)&a[i], 1, 4);
@@ -167,6 +198,15 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, TYPE* __r
     const TYPE m1 = (TYPE) 0x5555555555555555 << (BYTES/2) | 0x5555555555555555;
     const TYPE m2 = (TYPE) 0x3333333333333333 << (BYTES/2) | 0x3333333333333333;
     const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f << (BYTES/2) | 0x0f0f0f0f0f0f0f0f;
+    #elif defined(GRAN64)
+    const TYPE m1 = (TYPE) 0x5555555555555555;
+    const TYPE m2 = (TYPE) 0x3333333333333333;
+    const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f;
+    #else
+    const TYPE m1 = (TYPE) 0x55555555;
+    const TYPE m2 = (TYPE) 0x33333333;
+    const TYPE m3 = (TYPE) 0x0f0f0f0f;
+    #endif
 
     for(int i=0; i<8; i++){
         a[i] = ((TYPE*)plain)[i];
@@ -181,27 +221,20 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, TYPE* __r
         swap((unsigned char*)(void*)&a[i],14,11);
     }
     
-    swapByte(a,   a+1, m1, 1);
-    swapByte(a+2, a+3, m1, 1);
-    swapByte(a+4, a+5, m1, 1);
-    swapByte(a+6, a+7, m1, 1);
+    SwapMove(a,   a+1, m1, 1);
+    SwapMove(a+2, a+3, m1, 1);
+    SwapMove(a+4, a+5, m1, 1);
+    SwapMove(a+6, a+7, m1, 1);
     
-    swapByte(a,   a+2, m2, 2);
-    swapByte(a+1, a+3, m2, 2);
-    swapByte(a+4, a+6, m2, 2);
-    swapByte(a+5, a+7, m2, 2);
+    SwapMove(a,   a+2, m2, 2);
+    SwapMove(a+1, a+3, m2, 2);
+    SwapMove(a+4, a+6, m2, 2);
+    SwapMove(a+5, a+7, m2, 2);
     
-    swapByte(a,   a+4, m3, 4);
-    swapByte(a+1, a+5, m3, 4);
-    swapByte(a+2, a+6, m3, 4);
-    swapByte(a+3, a+7, m3, 4);
-    
-    
-    #endif
-    #ifdef GRAN64
-    
-    
-    #endif
+    SwapMove(a,   a+4, m3, 4);
+    SwapMove(a+1, a+5, m3, 4);
+    SwapMove(a+2, a+6, m3, 4);
+    SwapMove(a+3, a+7, m3, 4);
 }
 
 __device__ static TYPE rot(TYPE a, const int n){
@@ -370,7 +403,7 @@ __device__ void subBytes(TYPE a[8]){
     L0 = M61 ^ M62;
     L1 = M50 ^ M56;
     L2 = M46 ^ M48;
-    L3 = M47 ^ M55;
+    L3 = M47 ^ M55;
     L4 = M54 ^ M58;
     L5 = M49 ^ M61;
     L6 = M62 ^ L5;
@@ -407,12 +440,33 @@ __device__ void subBytes(TYPE a[8]){
     a[0] = (~(L6^L23));
 }
 
-__device__ void shiftRows(TYPE a[8]){ //TODO
+__device__ void shiftRows(TYPE a[8]){
+    #ifdef GRAN128
     for(int i=0; i<8; i++){
         a[i].lo = (uint64_t)__byte_perm((uint64_t)(a[i].lo)>>32,0,0b0000001100100001)<<32 | a[i].lo&0xffffffff;
         a[i].hi = ((uint64_t)__byte_perm(a[i].hi>>32,0, 
         0b0010000100000011)<<32) | __byte_perm((uint64_t)(a[i].hi),0, 0b0001000000110010);
     }
+    #elif defined(GRAN64)
+    uint64_t t0, t1, t2, t3;
+    for(int k=0; k<8; k++){
+        t0 = __funnelshift_lc((a[k]&0xffffffff00000000)>>16,(a[k]&0xffffffff00000000)>>32,4);
+        t1=__funnelshift_lc((a[k]&0xffffffff) <<16,a[k]&0xffffffff ,12);
+        t2=__byte_perm(t0 ,(a[k]&0xffffffff00000000)>>32 ,0x7610);
+        t3=__byte_perm(t1 ,a[k]&0xffffffff ,0x6710);
+        a[k]=((( uint64_t)t2) <<32)|(( uint64_t)t3);
+    }
+    #else
+    uint32_t t0, t1, t2, t3;
+    for(int k=0; k<8; k++){
+        t0 = __funnelshift_lc((a[k]&0xffff0000)>>8,(a[k]&0xffff0000)>>16,4);
+        t1=__funnelshift_lc((a[k]&0xffff) <<8,a[k]&0xffff ,12);
+        t2=__byte_perm(t0 ,(a[k]&0xffff0000)>>16 ,0x7610);
+        t3=__byte_perm(t1 ,a[k]&0xffff ,0x6710);
+        a[k]=((( uint32_t)t2) <<16)|(( uint32_t)t3);
+    }
+    #endif
+
 }
 
 __device__ void addRoundKey(TYPE* __restrict__ a, TYPE* __restrict__  key){
@@ -666,12 +720,12 @@ int main(void) {
     struct cbc_key_data avx_roundkeys;
 
     uint8_t iv[16];
-    char* out = (char*)malloc(16*8*NUM_BLOCKS);
+    char* out = (char*)malloc(BYTES*8*NUM_BLOCKS);
     memset(iv, 0, 16);
   
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
     startav = clock();
-    for(unsigned long i=0; i<8*NUM_BLOCKS; i++){
+    for(unsigned long i=0; i<PLAIN_SIZE/16; i++){
         aes_cbc_enc_128(plain+16*i, iv, avx_roundkeys.enc_keys,out+16*i, 16);
     }
     endav = clock();
