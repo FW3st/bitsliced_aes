@@ -67,13 +67,13 @@ __device__ void cu_printHex(unsigned char* ptr, int len){
 
 __device__ void cu_print_state(unsigned char* a){
     cu_printHex(a,16);
-    cu_printHex(a+1,16);
-    cu_printHex(a+2,16);
-    cu_printHex(a+3,16);
-    cu_printHex(a+4,16);
-    cu_printHex(a+5,16);
-    cu_printHex(a+6,16);
-    cu_printHex(a+7,16);
+    cu_printHex(a+1*16,16);
+    cu_printHex(a+2*16,16);
+    cu_printHex(a+3*16,16);
+    cu_printHex(a+4*16,16);
+    cu_printHex(a+5*16,16);
+    cu_printHex(a+6*16,16);
+    cu_printHex(a+7*16,16);
     printf("____________________\n");
 }
 
@@ -94,7 +94,6 @@ __device__ void cu_print_stateword(TYPE* a){
 }
 
 
-
 void printHex(unsigned char* ptr, int len){
     for(int i=0; i<len; i++){
         printf("%02x ", ptr[i]&0xff);
@@ -103,6 +102,17 @@ void printHex(unsigned char* ptr, int len){
     puts("");
 }
 
+void print_state(unsigned char* a){
+    printHex(a,16);
+    printHex(a+1*16,16);
+    printHex(a+2*16,16);
+    printHex(a+3*16,16);
+    printHex(a+4*16,16);
+    printHex(a+5*16,16);
+    printHex(a+6*16,16);
+    printHex(a+7*16,16);
+    printf("____________________\n");
+}
 
 __device__ static void swapByte(TYPE* __restrict__  a , TYPE* __restrict__  b, TYPE m, int n){
     TYPE t = ((((*a)>>n)^(*b)))&m;
@@ -112,12 +122,12 @@ __device__ static void swapByte(TYPE* __restrict__  a , TYPE* __restrict__  b, T
 
 
 __device__ void swap(unsigned char* a, int i, int j){
-    char tmp = a[i];
+    unsigned char tmp = a[i];
     a[i] = a[j];
     a[j]=tmp;
 }
 
-__device__ void bitorder_retransform(char* __restrict__  plain, TYPE* __restrict__  a){//TODO
+__device__ void bitorder_retransform(unsigned char* __restrict__  plain, TYPE* __restrict__  a){//TODO
     const TYPE m1 = (TYPE) 0x5555555555555555 << (BYTES/2) | 0x5555555555555555;
     const TYPE m2 = (TYPE) 0x3333333333333333 << (BYTES/2) | 0x3333333333333333;
     const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f << (BYTES/2) | 0x0f0f0f0f0f0f0f0f;
@@ -152,7 +162,7 @@ __device__ void bitorder_retransform(char* __restrict__  plain, TYPE* __restrict
 }
 
 
-__device__ void bitorder_transform(char* __restrict__  plain, TYPE* __restrict__  a){
+__device__ void bitorder_transform(unsigned char* __restrict__  plain, TYPE* __restrict__  a){
     #ifdef GRAN128
     const TYPE m1 = (TYPE) 0x5555555555555555 << (BYTES/2) | 0x5555555555555555;
     const TYPE m2 = (TYPE) 0x3333333333333333 << (BYTES/2) | 0x3333333333333333;
@@ -411,7 +421,7 @@ __device__ void addRoundKey(TYPE* __restrict__ a, TYPE* __restrict__  key){
     }
 }
 
-__global__ void encrypt(char* __restrict__  plain, TYPE* __restrict__ keys, char* __restrict__ cypher){
+__global__ void encrypt(unsigned char* __restrict__  plain, TYPE* __restrict__ keys, unsigned char* __restrict__ cypher){
     TYPE a[8];
     plain  += (BYTES*8) * blockIdx.x;
     cypher += (BYTES*8) * blockIdx.x;
@@ -598,9 +608,10 @@ int get_num_threads(){
 #ifndef TEST // Q'n'D ToDo
 int main(void) {
     //print_device_info();
-    char* d_plain;
+    
+    unsigned char* d_plain;
     TYPE* d_roundkey;
-    char* d_cypher;
+    unsigned char* d_cypher;
     cudaEvent_t start, stop;
     float time;
     

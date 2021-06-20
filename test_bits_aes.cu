@@ -43,18 +43,6 @@ void print_state128(uint128_t* a){
     printf("____________________\n");
 }
 
-void print_state(unsigned char* a){
-    printHex(a,16);
-    printHex(a+16,16);
-    printHex(a+2*16,16);
-    printHex(a+3*16,16);
-    printHex(a+4*16,16);
-    printHex(a+5*16,16);
-    printHex(a+6*16,16);
-    printHex(a+7*16,16);
-    printf("____________________\n");
-}
-
 unsigned char get_byte(unsigned char a[8][16], int n){
     int c = n/8;
     int b = 7-n%8;
@@ -96,12 +84,12 @@ void fill_random(int* ar, int len){
     }
 }
 
-__global__ void __test_bitorder_transform(char*plain, uint128_t transformed[8]){
+__global__ void __test_bitorder_transform(unsigned char*plain, uint128_t transformed[8]){
     bitorder_transform(plain, transformed);
 }
 
-void check_bitorder(char (*raw)[16], char (*ord)[16]){
-    char x,y;
+void check_bitorder(unsigned char (*raw)[16], unsigned char (*ord)[16]){
+    unsigned char x,y;
     for(int by=0; by<16; by++){
         for(int bi=0; bi<8; bi++){
             for(int d=0; d<8; d++){
@@ -117,11 +105,11 @@ void check_bitorder(char (*raw)[16], char (*ord)[16]){
     printf("check_bitorder passed\n");
 }
 
-__global__ void __test_bitorder_retransform(char*plain, uint128_t transformed[8]){
+__global__ void __test_bitorder_retransform(unsigned char*plain, uint128_t transformed[8]){
      bitorder_retransform(plain, transformed);
 }
 
-void check_bitreorder(char* raw, char* reo){
+void check_bitreorder(unsigned char* raw, unsigned char* reo){
     if(memcmp(raw, reo, 16*8) != 0){
         printf("check_bitreorder failed\n");
         return;
@@ -134,7 +122,7 @@ void check_encrypt(char* plain, unsigned char* key){
     //intel avx cbc aes, n times without IV ~> ecb
     struct cbc_key_data avx_roundkeys;
     uint8_t iv[16];
-    char out[16*8*NUM_BLOCKS];
+    unsigned char out[16*8*NUM_BLOCKS];
     memset(iv, 0, 128);
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
     for(int i=0; i<8*NUM_BLOCKS; i++){
@@ -142,10 +130,10 @@ void check_encrypt(char* plain, unsigned char* key){
     }
     
     //bitsliced aes
-    char bs_out[16*8*NUM_BLOCKS];
-    char* d_plain;
+    unsigned char bs_out[16*8*NUM_BLOCKS];
+    unsigned char* d_plain;
     uint128_t* d_roundkey;
-    char* d_cypher;
+    unsigned char* d_cypher;
     unsigned char* roundkeys = (unsigned char*) malloc(176);
     unsigned char* bs_roundkeys = (unsigned char*) malloc(1408);
     create_round_key(key, roundkeys);
@@ -211,7 +199,7 @@ __global__ void __test_shiftRows(uint128_t a[8]){
     shiftRows(a);
 }
 
-void check_shiftRows(char a[8][16], char s[8][16]){
+void check_shiftRows(unsigned char a[8][16],unsigned char s[8][16]){
     int fail = 0;
     for(int i=0; i<8; i++){
         // no shift
@@ -319,14 +307,14 @@ int main(void) {
 
 
     // CHECK bitorder_transform
-    __test_bitorder_transform<<<1,1>>>((char*)((void*)inp128_cuda),out128_cuda);
+    __test_bitorder_transform<<<1,1>>>((unsigned char*)((void*)inp128_cuda),out128_cuda);
     cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
-    check_bitorder( (char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
+    check_bitorder( (unsigned char(*)[16]) ((void*)inp128), (unsigned char(*)[16]) ((void*)out128));
 
     // CHECK bitorder_retransform
-    __test_bitorder_retransform<<<1,1>>>((char*)((void*)out128_cuda2),out128_cuda);
+    __test_bitorder_retransform<<<1,1>>>((unsigned char*)((void*)out128_cuda2),out128_cuda);
     cudaMemcpy(out1282, out128_cuda2, 16*8, cudaMemcpyDeviceToHost);
-    check_bitreorder((char(*)) ((void*)inp128), (char(*)) ((void*)out1282));
+    check_bitreorder((unsigned char(*)) ((void*)inp128), (unsigned char(*)) ((void*)out1282));
 
     // CHECK addRoundKey
     cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
@@ -344,12 +332,12 @@ int main(void) {
     cudaMemcpy(out128_cuda, inp128_cuda, 16*8, cudaMemcpyDeviceToDevice);
     __test_shiftRows<<<1,1>>>(out128_cuda);
     cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
-    check_shiftRows((char(*)[16]) ((void*)inp128), (char(*)[16]) ((void*)out128));
+    check_shiftRows((unsigned char(*)[16]) ((void*)inp128), (unsigned char(*)[16]) ((void*)out128));
 
     // CHECK mixColumns
     cudaMemcpy(out128_cuda, out128, 16*8, cudaMemcpyHostToDevice);
     cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
-    __test_bitorder_transform<<<1,1>>>((char*)((void*)inp128_cuda),out128_cuda);
+    __test_bitorder_transform<<<1,1>>>((unsigned char*)((void*)inp128_cuda),out128_cuda);
     cudaMemcpy(out128_cuda2, out128_cuda, 16*8, cudaMemcpyDeviceToDevice);
     __test_mixColumns<<<1,1>>>(out128_cuda2);
     cudaMemcpy(out128, out128_cuda, 16*8, cudaMemcpyDeviceToHost);
