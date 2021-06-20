@@ -5,6 +5,24 @@
 #include "device.h"
 #include "aes_cbc.h"
 
+#define GRAN32
+#define GRAN64
+#define GRAN128
+
+#ifdef GRAN32
+#define TYPE uint32_t
+#define BYTES 4
+#define BITS  32
+#elif defined(GRAN64)
+#define TYPE uint64_t
+#define BYTES 8
+#define BITS  64
+#else
+#define TYPE uint128_t
+#define BYTES 16
+#define BITS  128
+#endif
+
 #define WORDSIZE 32
 #define KEY_SIZE 128
 
@@ -15,7 +33,7 @@
 
 
 #define NUM_BLOCKS 15625000lu
-#define BLOCK_SIZE 128lu
+#define BLOCK_SIZE 8 * BYTES
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
 
@@ -25,7 +43,7 @@ void printError(){
     printf("error: %s\n",cudaGetErrorString(error));
 }
 
-__device__ unsigned char get_byte128(uint128_t a[8], int n){
+__device__ unsigned char get_byteword(TYPE a[8], int n){
     n = n/16+8*(n%16);
     unsigned char ret = 0;
     
@@ -59,19 +77,19 @@ __device__ void cu_print_state(unsigned char* a){
     printf("____________________\n");
 }
 
-__device__ void cu_printHex128(uint128_t* a, int l){
+__device__ void cu_printHexword(TYPE* a, int l){
     cu_printHex((unsigned char*)(void*)a,l);
 }
 
-__device__ void cu_print_state128(uint128_t* a){
-    cu_printHex128(a,16);
-    cu_printHex128(a+1,16);
-    cu_printHex128(a+2,16);
-    cu_printHex128(a+3,16);
-    cu_printHex128(a+4,16);
-    cu_printHex128(a+5,16);
-    cu_printHex128(a+6,16);
-    cu_printHex128(a+7,16);
+__device__ void cu_print_stateword(TYPE* a){
+    cu_printHexword(a,16);
+    cu_printHexword(a+1,16);
+    cu_printHexword(a+2,16);
+    cu_printHexword(a+3,16);
+    cu_printHexword(a+4,16);
+    cu_printHexword(a+5,16);
+    cu_printHexword(a+6,16);
+    cu_printHexword(a+7,16);
     printf("____________________\n");
 }
 
@@ -86,8 +104,8 @@ void printHex(unsigned char* ptr, int len){
 }
 
 
-__device__ static void swapByte(uint128_t* __restrict__  a , uint128_t* __restrict__  b, uint128_t m, int n){
-    uint128_t t = ((((*a)>>n)^(*b)))&m;
+__device__ static void swapByte(TYPE* __restrict__  a , TYPE* __restrict__  b, TYPE m, int n){
+    TYPE t = ((((*a)>>n)^(*b)))&m;
     *b = (*b) ^ t;
     *a = (*a) ^ (t << n);
 }
@@ -99,10 +117,10 @@ __device__ void swap(unsigned char* a, int i, int j){
     a[j]=tmp;
 }
 
-__device__ void bitorder_retransform(char* __restrict__  plain, uint128_t* __restrict__  a){
-    const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
-    const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
-    const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
+__device__ void bitorder_retransform(char* __restrict__  plain, TYPE* __restrict__  a){//TODO
+    const TYPE m1 = (TYPE) 0x5555555555555555 << (BYTES/2) | 0x5555555555555555;
+    const TYPE m2 = (TYPE) 0x3333333333333333 << (BYTES/2) | 0x3333333333333333;
+    const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f << (BYTES/2) | 0x0f0f0f0f0f0f0f0f;
 
     swapByte(a,   a+4, m3, 4);
     swapByte(a+1, a+5, m3, 4);
@@ -129,18 +147,19 @@ __device__ void bitorder_retransform(char* __restrict__  plain, uint128_t* __res
     }
     
     for(int i=0; i<8; i++){
-        ((uint128_t*)plain)[i] = a[i];
+        ((TYPE*)plain)[i] = a[i];
     }
 }
 
 
-__device__ void bitorder_transform(char* __restrict__  plain, uint128_t* __restrict__  a){
-    const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
-    const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
-    const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
+__device__ void bitorder_transform(char* __restrict__  plain, TYPE* __restrict__  a){
+    #ifdef GRAN128
+    const TYPE m1 = (TYPE) 0x5555555555555555 << (BYTES/2) | 0x5555555555555555;
+    const TYPE m2 = (TYPE) 0x3333333333333333 << (BYTES/2) | 0x3333333333333333;
+    const TYPE m3 = (TYPE) 0x0f0f0f0f0f0f0f0f << (BYTES/2) | 0x0f0f0f0f0f0f0f0f;
 
     for(int i=0; i<8; i++){
-        a[i] = ((uint128_t*)plain)[i];
+        a[i] = ((TYPE*)plain)[i];
     }
     
     for(int i=0; i<8; i++){ //TODO improove
@@ -166,23 +185,30 @@ __device__ void bitorder_transform(char* __restrict__  plain, uint128_t* __restr
     swapByte(a+1, a+5, m3, 4);
     swapByte(a+2, a+6, m3, 4);
     swapByte(a+3, a+7, m3, 4);
+    
+    
+    #endif
+    #ifdef GRAN64
+    
+    
+    #endif
 }
 
-__device__ static uint128_t rot(uint128_t a, const int N){
-    return a>>N | a<<(128-N);
+__device__ static TYPE rot(TYPE a, const int n){
+    return a>>n | a<<(BITS-n);
 }
 
-__device__ void mixColumns(uint128_t a[8]){
-    static const int N1 = 32;
-    static const int N2 = 32*2;
-    uint128_t t0 = (a[7]^rot(a[7],N1))^rot(a[0],N1)^rot((a[0]^rot(a[0],N1)),N2);
-    uint128_t t1 = (a[0]^rot(a[0],N1))^(a[7]^rot(a[7],N1))^rot(a[1],N1)^rot((a[1]^rot(a[1],N1)),N2);
-    uint128_t t2 = (a[1]^rot(a[1],N1))^rot(a[2],N1)^rot((a[2]^rot(a[2],N1)),N2);
-    uint128_t t3 = (a[2]^rot(a[2],N1))^(a[7]^rot(a[7],N1))^rot(a[3],N1)^rot((a[3]^rot(a[3],N1)),N2);
-    uint128_t t4 = (a[3]^rot(a[3],N1))^(a[7]^rot(a[7],N1))^rot(a[4],N1)^rot((a[4]^rot(a[4],N1)),N2);
-    uint128_t t5 = (a[4]^rot(a[4],N1))^rot(a[5],N1)^rot((a[5]^rot(a[5],N1)),N2);
-    uint128_t t6 = (a[5]^rot(a[5],N1))^rot(a[6],N1)^rot((a[6]^rot(a[6],N1)),N2);
-    uint128_t t7 = (a[6]^rot(a[6],N1))^rot(a[7],N1)^rot((a[7]^rot(a[7],N1)),N2);
+__device__ void mixColumns(TYPE a[8]){
+    static const int N1 = BITS/2;
+    static const int N2 = BITS;
+    TYPE t0 = (a[7]^rot(a[7],N1))^rot(a[0],N1)^rot((a[0]^rot(a[0],N1)),N2);
+    TYPE t1 = (a[0]^rot(a[0],N1))^(a[7]^rot(a[7],N1))^rot(a[1],N1)^rot((a[1]^rot(a[1],N1)),N2);
+    TYPE t2 = (a[1]^rot(a[1],N1))^rot(a[2],N1)^rot((a[2]^rot(a[2],N1)),N2);
+    TYPE t3 = (a[2]^rot(a[2],N1))^(a[7]^rot(a[7],N1))^rot(a[3],N1)^rot((a[3]^rot(a[3],N1)),N2);
+    TYPE t4 = (a[3]^rot(a[3],N1))^(a[7]^rot(a[7],N1))^rot(a[4],N1)^rot((a[4]^rot(a[4],N1)),N2);
+    TYPE t5 = (a[4]^rot(a[4],N1))^rot(a[5],N1)^rot((a[5]^rot(a[5],N1)),N2);
+    TYPE t6 = (a[5]^rot(a[5],N1))^rot(a[6],N1)^rot((a[6]^rot(a[6],N1)),N2);
+    TYPE t7 = (a[6]^rot(a[6],N1))^rot(a[7],N1)^rot((a[7]^rot(a[7],N1)),N2);
     
    a[0]=t0;
    a[1]=t1;
@@ -195,15 +221,15 @@ __device__ void mixColumns(uint128_t a[8]){
 }
 
 // from [13] A Fast and Cache-Timing Resistant Implementation of the AES
-__device__ void mixColumnsFAILS(uint128_t a[8]){
-    uint128_t t0 = a[0] ^ rot(a[0],32);
-    uint128_t t1 = rot(a[1],32) ^ rot(a[1],64);
-    uint128_t t2 = a[2] ^ rot(a[2],32);
-    uint128_t t3 = rot(a[3],32) ^ rot(a[3],64);
-    uint128_t t4 = a[4] ^ rot(a[4],32);
-    uint128_t t5 = rot(a[5],32) ^ rot(a[5],64);
-    uint128_t t6 = a[6] ^ rot(a[6],32);
-    uint128_t t7 = rot(a[7],32) ^ rot(a[7],64);
+__device__ void mixColumnsFAILS(TYPE a[8]){
+    TYPE t0 = a[0] ^ rot(a[0],32);
+    TYPE t1 = rot(a[1],32) ^ rot(a[1],64);
+    TYPE t2 = a[2] ^ rot(a[2],32);
+    TYPE t3 = rot(a[3],32) ^ rot(a[3],64);
+    TYPE t4 = a[4] ^ rot(a[4],32);
+    TYPE t5 = rot(a[5],32) ^ rot(a[5],64);
+    TYPE t6 = a[6] ^ rot(a[6],32);
+    TYPE t7 = rot(a[7],32) ^ rot(a[7],64);
     
     a[2] ^= t1;
     t1 ^= t0;
@@ -237,8 +263,8 @@ __device__ void mixColumnsFAILS(uint128_t a[8]){
 
 
 // from [14] A Small Depth-16 Circuit for the AES S-Box
-__device__ void subBytes(uint128_t a[8]){
-    uint128_t T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13,T14,T15,T16,T17,T18,T19,T20,T21,T22,T23,T24,T25,T26,T27,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15,M16,M17,M18,M19,M20,M21,M22,M23,M24,M25,M26,M27,M28,M29,M30,M31,M32,M33,M34,M35,M36,M37,M38,M39,M40,M41,M42,M43,M44,M45,M46,M47,M48,M49,M50,M51,M52,M53,M54,M55,M56,M57,M58,M59,M60,M61,M62,M63,L0,L1,L2,L3,L4,L5,L6,L7,L8,L9,L10,L11,L12,L13,L14,L15,L16,L17,L18,L19,L20,L21,L22,L23,L24,L25,L26,L27,L28,L29;
+__device__ void subBytes(TYPE a[8]){
+    TYPE T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13,T14,T15,T16,T17,T18,T19,T20,T21,T22,T23,T24,T25,T26,T27,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13,M14,M15,M16,M17,M18,M19,M20,M21,M22,M23,M24,M25,M26,M27,M28,M29,M30,M31,M32,M33,M34,M35,M36,M37,M38,M39,M40,M41,M42,M43,M44,M45,M46,M47,M48,M49,M50,M51,M52,M53,M54,M55,M56,M57,M58,M59,M60,M61,M62,M63,L0,L1,L2,L3,L4,L5,L6,L7,L8,L9,L10,L11,L12,L13,L14,L15,L16,L17,L18,L19,L20,L21,L22,L23,L24,L25,L26,L27,L28,L29;
     T1 = a[7] ^ a[4];
     T2 = a[7] ^ a[2];
     T3 = a[7] ^ a[1];
@@ -371,7 +397,7 @@ __device__ void subBytes(uint128_t a[8]){
     a[0] = (~(L6^L23));
 }
 
-__device__ void shiftRows(uint128_t a[8]){
+__device__ void shiftRows(TYPE a[8]){ //TODO
     for(int i=0; i<8; i++){
         a[i].lo = (uint64_t)__byte_perm((uint64_t)(a[i].lo)>>32,0,0b0000001100100001)<<32 | a[i].lo&0xffffffff;
         a[i].hi = ((uint64_t)__byte_perm(a[i].hi>>32,0, 
@@ -379,16 +405,16 @@ __device__ void shiftRows(uint128_t a[8]){
     }
 }
 
-__device__ void addRoundKey(uint128_t* __restrict__ a, uint128_t* __restrict__  key){
+__device__ void addRoundKey(TYPE* __restrict__ a, TYPE* __restrict__  key){
     for(int i=0; i<8; i++){
         a[i] ^= key[i];
     }
 }
 
-__global__ void encrypt(char* __restrict__  plain, uint128_t* __restrict__ keys, char* __restrict__ cypher){
-    uint128_t a[8];
-    plain = plain + (16*8) * blockIdx.x;
-    cypher = cypher + (16*8) * blockIdx.x;
+__global__ void encrypt(char* __restrict__  plain, TYPE* __restrict__ keys, char* __restrict__ cypher){
+    TYPE a[8];
+    plain  += (BYTES*8) * blockIdx.x;
+    cypher += (BYTES*8) * blockIdx.x;
     
     bitorder_transform(plain, a);
     addRoundKey(a, keys);
@@ -401,7 +427,7 @@ __global__ void encrypt(char* __restrict__  plain, uint128_t* __restrict__ keys,
     subBytes(a);
     shiftRows(a);
     addRoundKey(a, keys+8*10);
-    bitorder_retransform(cypher, (uint128_t*)a);
+    bitorder_retransform(cypher, (TYPE*)a);
 }
 
 void subWord(unsigned char word[4], unsigned char result[4]){
@@ -428,7 +454,7 @@ void subWord(unsigned char word[4], unsigned char result[4]){
   }
 }
 
-void bitslice_key(unsigned char exkey[176], unsigned char slicedkey[11][8][16]){
+void bitslice_key(unsigned char exkey[ROUND_KEY_COUNT*16], unsigned char slicedkey[ROUND_KEY_COUNT][8][BYTES]){//TODO
   for(int i=0; i<176; i++){
     if((exkey[i] & 0x80) != 0)
       slicedkey[i/16][7][(i%4)*4+(i%16)/4] = 0xff;
@@ -573,7 +599,7 @@ int get_num_threads(){
 int main(void) {
     //print_device_info();
     char* d_plain;
-    uint128_t* d_roundkey;
+    TYPE* d_roundkey;
     char* d_cypher;
     cudaEvent_t start, stop;
     float time;
@@ -595,7 +621,7 @@ int main(void) {
     }
 
     create_round_key(key, roundkey);
-    bitslice_key(roundkey, (unsigned char (*)[8][16])bs_roundkey);
+    bitslice_key(roundkey, (unsigned char (*)[8][BYTES])bs_roundkey);
 
     for(unsigned long i=0; i<PLAIN_SIZE; i++){
         plain[i] = (char)i;
