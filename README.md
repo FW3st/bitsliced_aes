@@ -13,9 +13,11 @@ of the AES*", Robert Könighofer
 
 Outputs on a Nvidia A100:
 ```
-GPU: 1999 Mbytes in 29.345793 ms
-Makes 545.221564 Gbps
-AVX: 1999 Mbytes in 1.414386 s
-Makes 0.545222 Gbps
+GPU: 3999 Mbytes in 28.263424 ms
+Makes 1132.202460 Gbps
+AVX: 3999 Mbytes in 2.836259 s
+Makes 1.132202 Gbps
 passed
+7d b4 0b 23 | 65 a0 51 04 | 56 46 ea 93 | 43 48 66 71 | 52 ca c0 93 |
+7d b4 0b 23 | 65 a0 51 04 | 56 46 ea 93 | 43 48 66 71 | 52 ca c0 93 |
 ```

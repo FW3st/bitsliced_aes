@@ -14,9 +14,9 @@
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
 #define SERIAL 1
-#define THREADPARA 384
+#define THREADPARA 512
 
-#define NUM_BLOCKS 15624960lu/SERIAL*SERIAL/THREADPARA*THREADPARA
+#define NUM_BLOCKS 15624960lu*2/SERIAL*SERIAL/THREADPARA*THREADPARA
 #define BLOCK_SIZE 128lu
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
@@ -672,6 +672,7 @@ int main(void) {
     
     if(memcmp(out, cypher,  PLAIN_SIZE)!= 0){
         printf("failed\n");
+        printError();
     } else {
         printf("passed\n");
     }
