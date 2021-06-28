@@ -78,12 +78,6 @@ uint128_t touint128(void* ar){
 }
 
 
-void fill_random(int* ar, int len){
-    for(int i=0; i<len; i++){
-        ar[i] = rand();
-    }
-}
-
 __global__ void __test_bitorder_transform(unsigned char*plain, uint128_t transformed[8]){
     bitorder_transform(plain, transformed);
 }
