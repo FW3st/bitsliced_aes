@@ -657,7 +657,7 @@ int main(void) {
     struct cbc_key_data avx_roundkeys;
 
     uint8_t iv[16];
-    char* out = (char*)malloc(16*8*NUM_BLOCKS);
+    unsigned char* out = (unsigned char*)malloc(16*8*NUM_BLOCKS);
     memset(iv, 0, 16);
   
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
@@ -675,6 +675,10 @@ int main(void) {
     } else {
         printf("passed\n");
     }
+    
+    int ran_line = rand()%(PLAIN_SIZE-25);
+    printHex(cypher+ran_line,20);
+    printHex(out+ran_line,20);
     
     free(out);
     
