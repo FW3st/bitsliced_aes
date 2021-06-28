@@ -1,11 +1,21 @@
-# Implementation of Bitsliced AES Encryption on CUDA-Enabled GPU
+# Computer Security 2021:  Bitsliced AES
 
-see [Nishikawa N., Amano H., Iwai K. (2017) Implementation of Bitsliced AES Encryption on CUDA-Enabled GPU. In: Yan Z., Molva R., Mazurczyk W., Kantola R. (eds) Network and System Security. NSS 2017. Lecture Notes in Computer Science, vol 10394. Springer, Cham. https://doi.org/10.1007/978-3-319-64701-2_20]
+## Based on:
+- "Implementation of Bitsliced AES Encryption
+on CUDA-Enabled GPU", Naoki Nishikawa, Hideharu Amano and Keisuke Iwai
+- "A Fast and Cache-Timing Resistant Implementation
+of the AES*", Robert Könighofer
+- "A Small Depth-16 Circuit for the AES S-Box", Joan Boyar and René Peralta
 
-also uses: 
+## Using following repos:
  - "CUDA-uint128-master", see https://github.com/curtisseizert/CUDA-uint128
- - intel AES todo
+ - "isa-l_crypto", see https://github.com/intel/isa-l_crypto (for verification purpose)
 
-
-Computer Security 2021
-
+Outputs on a Nvidia A100:
+```
+GPU: 1999 Mbytes in 14.743552 ms
+Makes 1085.217376 Gbps
+AVX: 1999 Mbytes in 1.464530 s
+Makes 1.085217 Gbps
+passed
+```
