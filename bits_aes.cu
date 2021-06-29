@@ -4,6 +4,7 @@
 #include <time.h>
 #include "device.h"
 #include "aes_cbc.h"
+#include "utils.h"
 
 #define WORDSIZE 32
 #define KEY_SIZE 128
@@ -20,90 +21,7 @@
 #define BLOCK_SIZE 128lu
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
 
-
-void fill_random(int* ar, int len){
-    for(int i=0; i<len; i++){
-        ar[i] = rand();
-    }
-}
-
-void printError(){
-    cudaError_t error = cudaGetLastError ();
-    printf("error: %s\n",cudaGetErrorName(error));
-    printf("error: %s\n",cudaGetErrorString(error));
-}
-
-__device__ unsigned char get_byte128(uint128_t a[8], int n){
-    n = n/16+8*(n%16);
-    unsigned char ret = 0;
-    
-    for(int i = 7; i>=0; i--){
-        if(n>=64){
-           ret = (ret << 1) | ((unsigned int)(a[i].hi>>(n%64))&1);
-        }else{
-           ret = (ret << 1) | ((unsigned int)(a[i].lo>>(n%64))&1); 
-        }
-    }
-    return ret;    
-}
-
-__device__ void cu_printHex(unsigned char* ptr, int len){
-    for(int i=0; i<len; i++){
-        printf("%02x ", ptr[i]&0xff);
-        if(i%4 == 3) printf("| ");
-    }
-    printf("\n");
-}
-
-__device__ void cu_print_state(unsigned char* a){
-    cu_printHex(a,16);
-    cu_printHex(a+1*16,16);
-    cu_printHex(a+2*16,16);
-    cu_printHex(a+3*16,16);
-    cu_printHex(a+4*16,16);
-    cu_printHex(a+5*16,16);
-    cu_printHex(a+6*16,16);
-    cu_printHex(a+7*16,16);
-    printf("____________________\n");
-}
-
-__device__ void cu_printHex128(uint128_t* a, int l){
-    cu_printHex((unsigned char*)(void*)a,l);
-}
-
-__device__ void cu_print_state128(uint128_t* a){
-    cu_printHex128(a,16);
-    cu_printHex128(a+1,16);
-    cu_printHex128(a+2,16);
-    cu_printHex128(a+3,16);
-    cu_printHex128(a+4,16);
-    cu_printHex128(a+5,16);
-    cu_printHex128(a+6,16);
-    cu_printHex128(a+7,16);
-    printf("____________________\n");
-}
-
-
-void printHex(unsigned char* ptr, int len){
-    for(int i=0; i<len; i++){
-        printf("%02x ", ptr[i]&0xff);
-        if(i%4 == 3) printf("| ");
-    }
-    puts("");
-}
-
-void print_state(unsigned char* a){
-    printHex(a,16);
-    printHex(a+1*16,16);
-    printHex(a+2*16,16);
-    printHex(a+3*16,16);
-    printHex(a+4*16,16);
-    printHex(a+5*16,16);
-    printHex(a+6*16,16);
-    printHex(a+7*16,16);
-    printf("____________________\n");
-}
-
+// from [13] A Fast and Cache-Timing Resistant Implementation of the AES
 __device__ static void swapByte(uint128_t* __restrict__  a , uint128_t* __restrict__  b, uint128_t m, int n){
     uint128_t t = ((((*a)>>n)^(*b)))&m;
     *b = (*b) ^ t;
@@ -216,6 +134,7 @@ __device__ void mixColumns(uint128_t a[8]){
    a[7]=t7;  
 }
 
+/*
 // from [13] A Fast and Cache-Timing Resistant Implementation of the AES
 __device__ void mixColumnsFAILS(uint128_t a[8]){
     uint128_t t0 = a[0] ^ rot(a[0],32);
@@ -255,7 +174,7 @@ __device__ void mixColumnsFAILS(uint128_t a[8]){
     t6 = rot(t6,64);
     a[6] ^= t6;    
 }
-
+*/
 
 
 // from [14] A Small Depth-16 Circuit for the AES S-Box
@@ -575,27 +494,6 @@ void create_round_key(unsigned char* key, unsigned char* roundkey){
     roundkey[i*4+2] = roundkey[i*4+2-number_key_words*4] ^ tmpL[2];
     roundkey[i*4+3] = roundkey[i*4+3-number_key_words*4] ^ tmpL[3];
   }
-}
-
-
-void print_device_info(){
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, DEVICE);
-    printf("name: %s\n", prop.name);
-    printf("GlobalMem: %lu\n", prop.totalGlobalMem);
-    printf("sharedMemPerBlock: %lu\n", prop.sharedMemPerBlock);
-    printf("regsPerBlock: %i\n", prop.regsPerBlock);
-    printf("maxThreadsPerBlock: %i\n", prop.maxThreadsPerBlock);
-    printf("maxThreadsDim[0]: %i\n", prop.maxThreadsDim[0]);
-    printf("maxThreadsDim[1]: %i\n", prop.maxThreadsDim[1]);
-    printf("maxThreadsDim[2]: %i\n", prop.maxThreadsDim[2]);
-    printf("clockRate: %i\n", prop.clockRate);
-}
-
-int get_num_threads(){
-    cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, DEVICE);
-    return 0;
 }
 
 

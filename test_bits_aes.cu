@@ -27,22 +27,6 @@ unsigned char substitute(unsigned char c){
     return SBOX[c >> 4][c & 0xf];
 }
 
-void printHex128(uint128_t* a, int l){
-    printHex((unsigned char*)(void*)a,l);
-}
-
-void print_state128(uint128_t* a){
-    printHex128(a,16);
-    printHex128(a+1,16);
-    printHex128(a+2,16);
-    printHex128(a+3,16);
-    printHex128(a+4,16);
-    printHex128(a+5,16);
-    printHex128(a+6,16);
-    printHex128(a+7,16);
-    printf("____________________\n");
-}
-
 unsigned char get_byte(unsigned char a[8][16], int n){
     int c = n/8;
     int b = 7-n%8;
@@ -53,22 +37,6 @@ unsigned char get_byte(unsigned char a[8][16], int n){
     return ret;    
 }
 
-void set_byte(unsigned char a[8][16], int n, unsigned char v){
-    int c = n/8;
-    int b = 7-n%8;
-    for(int i = 7; i>=0; i--){
-        if(v&(1<<i)){
-            a[i][c] = a[i][c] | (1<<b);
-        } else {
-            a[i][c] = a[i][c] & (~(1<<b));
-        }
-    } 
-}
-
-void set_byte128(uint128_t* a, int n, unsigned char v){
-    set_byte((unsigned char (*)[16])(void*)a, n, v);
-}
-
 uint128_t touint128(void* ar){
     uint64_t* inp = (uint64_t*) ar;
     uint128_t ret;
@@ -76,7 +44,6 @@ uint128_t touint128(void* ar){
     ret.hi = inp[1];
     return ret;
 }
-
 
 __global__ void __test_bitorder_transform(unsigned char*plain, uint128_t transformed[8]){
     bitorder_transform(plain, transformed);

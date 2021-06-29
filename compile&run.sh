@@ -3,7 +3,7 @@ export PATH=$PATH:/usr/local/cuda/bin
 if [ "$#" != "0" ]
 then
     echo "Compile Test:"
-    nvcc -lineinfo -G -o test test_bits_aes.cu -I CUDA-uint128 -I isa-l_crypto/include -L isa-l_crypto/bin -lisal_crypto
+    nvcc -G -o test test_bits_aes.cu -I CUDA-uint128 -I isa-l_crypto/include -L isa-l_crypto/bin -lisal_crypto
     ./test
 else
     echo "Compile AES:"
