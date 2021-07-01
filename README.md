@@ -11,6 +11,10 @@ of the AES*", Robert Könighofer
  - "CUDA-uint128-master", see https://github.com/curtisseizert/CUDA-uint128
  - "isa-l_crypto", see https://github.com/intel/isa-l_crypto (for verification purpose)
 
+## Usage
+ - run the "init.sh" script to pull and build th sub repositorys
+ - "compile&run.sh" runs the benchmark or a verification test if a parameter is given
+
 Outputs on a Nvidia A100:
 ```
 GPU: 3999 Mbytes in 36.316158 ms
