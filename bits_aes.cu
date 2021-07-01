@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "cuda_uint128.h"
 #include <time.h>
 #include "device.h"
@@ -14,12 +15,16 @@
 #define ROUND_KEY_COUNT (NR + 1)
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
-#define SERIAL 1
-#define THREADPARA 512
+#define SERIAL 1       // let a Thread process n aes blocks
+#define THREADPARA 256 // number of threads in a working group
+#define INPLACE 1      // comment out to disable in place encryption
+#define NENCRYPT 1     // encrypt n-times, only for test purpose
+#define DATAINGIGS 40  // desired plaintext size in GB
 
-#define NUM_BLOCKS 15624960lu*2/SERIAL*SERIAL/THREADPARA*THREADPARA
+#define NUM_BLOCKS 7812480lu*DATAINGIGS/SERIAL*SERIAL/THREADPARA*THREADPARA
 #define BLOCK_SIZE 128lu
 #define PLAIN_SIZE NUM_BLOCKS*BLOCK_SIZE
+
 
 // from [13] A Fast and Cache-Timing Resistant Implementation of the AES
 __device__ static void swapByte(uint128_t* __restrict__  a , uint128_t* __restrict__  b, uint128_t m, int n){
@@ -64,7 +69,7 @@ __device__ void bitorder_retransform(unsigned char* __restrict__  plain, uint128
         swap((unsigned char*)(void*)&a[i],13, 7);
         swap((unsigned char*)(void*)&a[i],14,11);
     }
-    
+
     #pragma unroll
     for(int i=0; i<8; i++){
         ((uint128_t*)plain)[i] = a[i];
@@ -83,7 +88,7 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, uint128_t
     }
     
     #pragma unroll
-    for(int i=0; i<8; i++){ //TODO improove
+    for(int i=0; i<8; i++){ //TODO improove ?
         swap((unsigned char*)(void*)&a[i], 1, 4);
         swap((unsigned char*)(void*)&a[i], 2, 8);
         swap((unsigned char*)(void*)&a[i], 3,12);
@@ -327,11 +332,14 @@ __device__ void addRoundKey(uint128_t* __restrict__ a, uint128_t* __restrict__  
         a[i] ^= key[i];
     }
 }
-
-__global__ void encrypt(unsigned char* __restrict__  plain, uint128_t* __restrict__ keys, unsigned char* __restrict__ cypher){
+#ifdef INPLACE
+__global__ void encrypt(unsigned char*  plain, uint128_t* keys){
+#else
+__global__ void encrypt(unsigned char*  __restrict__ plain, unsigned char*  __restrict__ cypher, uint128_t* __restrict__ keys){
+    cypher = cypher + BLOCK_SIZE * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
+#endif 
     uint128_t a[8];
-    plain = plain + (16*8) * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
-    cypher = cypher + (16*8) * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
+    plain = plain + BLOCK_SIZE * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
     #pragma unroll
     for(int j=0; j<SERIAL;j++){
         bitorder_transform(plain, a);
@@ -346,10 +354,14 @@ __global__ void encrypt(unsigned char* __restrict__  plain, uint128_t* __restric
         subBytes(a);
         shiftRows(a);
         addRoundKey(a, keys+8*10);
-        bitorder_retransform(cypher, (uint128_t*)a);
         
-        plain = plain + (16*8)*THREADPARA;
-        cypher = cypher + (16*8)*THREADPARA;
+#ifdef INPLACE
+        bitorder_retransform(plain, (uint128_t*)a);
+#else
+        bitorder_retransform(cypher, (uint128_t*)a);
+        cypher = cypher + BLOCK_SIZE*THREADPARA;
+#endif 
+        plain = plain + BLOCK_SIZE*THREADPARA;
     }
 }
 
@@ -503,15 +515,19 @@ int main(void) {
     srand((unsigned) time(&t));
     //print_device_info();
     unsigned char* d_plain;
-    uint128_t* d_roundkey;
     unsigned char* d_cypher;
+    uint128_t* d_roundkey;
     cudaEvent_t start, stop;
     float time;
     
     cudaSetDevice(DEVICE);
     
     cudaMalloc((void**)&d_plain, PLAIN_SIZE);
+#ifdef INPLACE
+    d_cypher = d_plain;
+#else
     cudaMalloc((void**)&d_cypher, PLAIN_SIZE);
+#endif 
     cudaMalloc((void**)&d_roundkey, ROUND_KEY_SIZE);
 
     unsigned char* plain = (unsigned char*) malloc(PLAIN_SIZE);
@@ -524,38 +540,50 @@ int main(void) {
     fill_random((int*)key, KEY_SIZE/4);
     create_round_key(key, roundkey);
     bitslice_key(roundkey, (unsigned char (*)[8][16])bs_roundkey);
-
-    fill_random((int*)plain, PLAIN_SIZE/4);
-
-    cudaMemcpy(d_plain, plain, PLAIN_SIZE, cudaMemcpyHostToDevice);
+    
     cudaMemcpy(d_roundkey, bs_roundkey, ROUND_KEY_SIZE, cudaMemcpyHostToDevice);
+#ifdef INPLACE
+        encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_roundkey); // ^= fill random
+#else
+        encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_cypher, d_roundkey);
+#endif 
+    cudaMemcpy(plain, d_plain, PLAIN_SIZE, cudaMemcpyDeviceToHost); // write back for verification
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start, 0);
-    encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_roundkey, d_cypher);
+    #pragma unroll
+    for(int i=0; i<NENCRYPT; i++){
+#ifdef INPLACE
+        encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_roundkey);
+#else
+        encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_cypher, d_roundkey);
+#endif 
+    }
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&time, start, stop);
-    
+
     cudaMemcpy(cypher, d_cypher, PLAIN_SIZE, cudaMemcpyDeviceToHost);
     
     printf("GPU: %lu Mbytes in %f ms\n", PLAIN_SIZE/1000/1000, time);
-    printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8);
+    printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8*NENCRYPT);
     
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     cudaFree(d_roundkey); 
+#ifndef INPLACE
     cudaFree(d_cypher);
+#endif 
     cudaFree(d_plain);
-    
-    //BENCH AVX AES
+
+    //VERIFY AVX AES
     clock_t startav, endav;
     double cpu_time_usedav;
     struct cbc_key_data avx_roundkeys;
 
     uint8_t iv[16];
-    unsigned char* out = (unsigned char*)malloc(16*8*NUM_BLOCKS);
+    unsigned char* out = (unsigned char*)malloc(BLOCK_SIZE*NUM_BLOCKS);
     memset(iv, 0, 16);
   
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);

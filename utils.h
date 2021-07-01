@@ -101,8 +101,8 @@ void print_state128(uint128_t* a){
     printf("____________________\n");
 }
 
-void fill_random(int* ar, int len){
-    for(int i=0; i<len; i++){
+void fill_random(int* ar, unsigned long len){
+    for(unsigned long i=0; i<len; i++){
         ar[i] = rand();
     }
 }
