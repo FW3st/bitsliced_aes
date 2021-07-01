@@ -34,7 +34,7 @@ unsigned char get_byte(unsigned char a[8][16], int n){
     for(int i = 7; i>=0; i--){
         ret = (ret << 1) | ((a[i][c]>>b)&1);
     }
-    return ret;    
+    return ret;
 }
 
 uint128_t touint128(void* ar){
@@ -89,7 +89,7 @@ void check_encrypt(char* plain, unsigned char* key){
     for(int i=0; i<8*NUM_BLOCKS; i++){
         aes_cbc_enc_128(plain+16*i, iv, avx_roundkeys.enc_keys,out+16*i, 16);
     }
-    
+
     //bitsliced aes
     unsigned char bs_out[16*8*NUM_BLOCKS];
     unsigned char* d_plain;
@@ -98,15 +98,15 @@ void check_encrypt(char* plain, unsigned char* key){
     unsigned char* roundkeys = (unsigned char*) malloc(176);
     unsigned char* bs_roundkeys = (unsigned char*) malloc(1408);
     create_round_key(key, roundkeys);
-        
+
     if(memcmp(roundkeys, avx_roundkeys.enc_keys, 16*11)){
         printf("check_create_round_key failed\n");
     } else {
         printf("check_create_round_key passed\n");
     }
     bitslice_key(roundkeys, (unsigned char (*)[8][16])bs_roundkeys);
-    
-    
+
+
     cudaMalloc((void**)&d_plain, 16*8 * NUM_BLOCKS);
     cudaMalloc((void**)&d_cypher, 16*8 * NUM_BLOCKS);
     cudaMalloc((void**)&d_roundkey, 1408);
@@ -115,7 +115,7 @@ void check_encrypt(char* plain, unsigned char* key){
     cudaMemcpy(d_roundkey, bs_roundkeys, 1408, cudaMemcpyHostToDevice);
     encrypt<<<NUM_BLOCKS,1>>>(d_plain, d_roundkey, d_cypher);
     cudaMemcpy(bs_out, d_cypher, 16*8*NUM_BLOCKS, cudaMemcpyDeviceToHost);
-    
+
     if(memcmp(bs_out,out,16*8*(NUM_BLOCKS))==0){
         printf("Encrypt passed\n");
     } else {
@@ -174,7 +174,7 @@ void check_shiftRows(unsigned char a[8][16],unsigned char s[8][16]){
         // three bytes
         fail += abs(memcmp(a[i]+12,s[i]+13,3));
         fail += a[i][15]!=s[i][12];
-        
+
         if(fail != 0){
             printf("check_shiftRows failed\n");
             return;
@@ -236,9 +236,9 @@ int main(void) {
     uint128_t* inp128_cuda2;
     uint128_t* out128_cuda;
     uint128_t* out128_cuda2;
-    
+
     cudaSetDevice(DEVICE);
-    
+
     char *raw = (char*) malloc(16*8*NUM_BLOCKS);
     unsigned char *raw2 = (unsigned char*) malloc(16*8);
     int* ran_buf = (int*) raw;
@@ -256,13 +256,13 @@ int main(void) {
         //fill_random(ran_buf2, 32);
         inp128[i] = touint128(ran_buf+4*i);
         inp1282[i] = touint128(ran_buf2+4*i);
-    }        
-    
+    }
+
     cudaMalloc((void**)&inp128_cuda, 16*8);
     cudaMalloc((void**)&inp128_cuda2, 16*8);
     cudaMalloc((void**)&out128_cuda, 16*8);
     cudaMalloc((void**)&out128_cuda2, 16*8);
-    
+
     cudaMemcpy(inp128_cuda, inp128, 16*8, cudaMemcpyHostToDevice);
     cudaMemcpy(inp128_cuda2, inp1282, 16*8, cudaMemcpyHostToDevice);
 
@@ -307,7 +307,7 @@ int main(void) {
 
     // CHECK encrypt
     check_encrypt(raw, raw2);
-    
+
     cudaDeviceSynchronize();
 
     cudaFree(out128_cuda2);

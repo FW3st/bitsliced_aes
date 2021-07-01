@@ -49,17 +49,17 @@ __device__ void bitorder_retransform(unsigned char* __restrict__  plain, uint128
     swapByte(a+1, a+5, m3, 4);
     swapByte(a+2, a+6, m3, 4);
     swapByte(a+3, a+7, m3, 4);
-    
+
     swapByte(a,   a+2, m2, 2);
     swapByte(a+1, a+3, m2, 2);
     swapByte(a+4, a+6, m2, 2);
     swapByte(a+5, a+7, m2, 2);
-    
+
     swapByte(a,   a+1, m1, 1);
     swapByte(a+2, a+3, m1, 1);
     swapByte(a+4, a+5, m1, 1);
     swapByte(a+6, a+7, m1, 1);
-    
+
     #pragma unroll
     for(int i=0; i<8; i++){
         swap((unsigned char*)(void*)&a[i], 1, 4);
@@ -86,7 +86,7 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, uint128_t
     for(int i=0; i<8; i++){
         a[i] = ((uint128_t*)plain)[i];
     }
-    
+
     #pragma unroll
     for(int i=0; i<8; i++){ //TODO improove ?
         swap((unsigned char*)(void*)&a[i], 1, 4);
@@ -96,17 +96,17 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, uint128_t
         swap((unsigned char*)(void*)&a[i],13, 7);
         swap((unsigned char*)(void*)&a[i],14,11);
     }
-    
+
     swapByte(a,   a+1, m1, 1);
     swapByte(a+2, a+3, m1, 1);
     swapByte(a+4, a+5, m1, 1);
     swapByte(a+6, a+7, m1, 1);
-    
+
     swapByte(a,   a+2, m2, 2);
     swapByte(a+1, a+3, m2, 2);
     swapByte(a+4, a+6, m2, 2);
     swapByte(a+5, a+7, m2, 2);
-    
+
     swapByte(a,   a+4, m3, 4);
     swapByte(a+1, a+5, m3, 4);
     swapByte(a+2, a+6, m3, 4);
@@ -128,7 +128,7 @@ __device__ void mixColumns(uint128_t a[8]){
     uint128_t t5 = (a[4]^rot(a[4],N1))^rot(a[5],N1)^rot((a[5]^rot(a[5],N1)),N2);
     uint128_t t6 = (a[5]^rot(a[5],N1))^rot(a[6],N1)^rot((a[6]^rot(a[6],N1)),N2);
     uint128_t t7 = (a[6]^rot(a[6],N1))^rot(a[7],N1)^rot((a[7]^rot(a[7],N1)),N2);
-    
+
    a[0]=t0;
    a[1]=t1;
    a[2]=t2;
@@ -136,7 +136,7 @@ __device__ void mixColumns(uint128_t a[8]){
    a[4]=t4;
    a[5]=t5;
    a[6]=t6;
-   a[7]=t7;  
+   a[7]=t7;
 }
 
 /*
@@ -150,7 +150,7 @@ __device__ void mixColumnsFAILS(uint128_t a[8]){
     uint128_t t5 = rot(a[5],32) ^ rot(a[5],64);
     uint128_t t6 = a[6] ^ rot(a[6],32);
     uint128_t t7 = rot(a[7],32) ^ rot(a[7],64);
-    
+
     a[2] ^= t1;
     t1 ^= t0;
     t1 = rot(t1,32);
@@ -177,7 +177,7 @@ __device__ void mixColumnsFAILS(uint128_t a[8]){
     t7 = rot(t7,32);
     a[7] ^= t7;
     t6 = rot(t6,64);
-    a[6] ^= t6;    
+    a[6] ^= t6;
 }
 */
 
@@ -321,7 +321,7 @@ __device__ void shiftRows(uint128_t a[8]){
     #pragma unroll
     for(int i=0; i<8; i++){
         a[i].lo = (uint64_t)__byte_perm((uint64_t)(a[i].lo)>>32,0,0b0000001100100001)<<32 | a[i].lo&0xffffffff;
-        a[i].hi = ((uint64_t)__byte_perm(a[i].hi>>32,0, 
+        a[i].hi = ((uint64_t)__byte_perm(a[i].hi>>32,0,
         0b0010000100000011)<<32) | __byte_perm((uint64_t)(a[i].hi),0, 0b0001000000110010);
     }
 }
@@ -337,7 +337,7 @@ __global__ void encrypt(unsigned char*  plain, uint128_t* keys){
 #else
 __global__ void encrypt(unsigned char*  __restrict__ plain, unsigned char*  __restrict__ cypher, uint128_t* __restrict__ keys){
     cypher = cypher + BLOCK_SIZE * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
-#endif 
+#endif
     uint128_t a[8];
     plain = plain + BLOCK_SIZE * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
     #pragma unroll
@@ -354,13 +354,13 @@ __global__ void encrypt(unsigned char*  __restrict__ plain, unsigned char*  __re
         subBytes(a);
         shiftRows(a);
         addRoundKey(a, keys+8*10);
-        
+
 #ifdef INPLACE
         bitorder_retransform(plain, (uint128_t*)a);
 #else
         bitorder_retransform(cypher, (uint128_t*)a);
         cypher = cypher + BLOCK_SIZE*THREADPARA;
-#endif 
+#endif
         plain = plain + BLOCK_SIZE*THREADPARA;
     }
 }
@@ -383,7 +383,7 @@ void subWord(unsigned char word[4], unsigned char result[4]){
                                 {0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e},
                                 {0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf},
                                 {0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16}};
-                       
+
   for(int i=0; i<4; i++){
     result[i] = sbox[(int)(word[i]>>4)][(int)(word[i]&0x0F)];
   }
@@ -519,15 +519,15 @@ int main(void) {
     uint128_t* d_roundkey;
     cudaEvent_t start, stop;
     float time;
-    
+
     cudaSetDevice(DEVICE);
-    
+
     cudaMalloc((void**)&d_plain, PLAIN_SIZE);
 #ifdef INPLACE
     d_cypher = d_plain;
 #else
     cudaMalloc((void**)&d_cypher, PLAIN_SIZE);
-#endif 
+#endif
     cudaMalloc((void**)&d_roundkey, ROUND_KEY_SIZE);
 
     unsigned char* plain = (unsigned char*) malloc(PLAIN_SIZE);
@@ -535,18 +535,18 @@ int main(void) {
     unsigned char* key = (unsigned char*) malloc(KEY_SIZE);
     unsigned char* roundkey = (unsigned char*) malloc(ROUND_KEY_SIZE);
     unsigned char* bs_roundkey = (unsigned char*) malloc(ROUND_KEY_SIZE);
-    
+
 
     fill_random((int*)key, KEY_SIZE/4);
     create_round_key(key, roundkey);
     bitslice_key(roundkey, (unsigned char (*)[8][16])bs_roundkey);
-    
+
     cudaMemcpy(d_roundkey, bs_roundkey, ROUND_KEY_SIZE, cudaMemcpyHostToDevice);
 #ifdef INPLACE
         encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_roundkey); // ^= fill random
 #else
         encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_cypher, d_roundkey);
-#endif 
+#endif
     cudaMemcpy(plain, d_plain, PLAIN_SIZE, cudaMemcpyDeviceToHost); // write back for verification
 
     cudaEventCreate(&start);
@@ -558,23 +558,23 @@ int main(void) {
         encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_roundkey);
 #else
         encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_cypher, d_roundkey);
-#endif 
+#endif
     }
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&time, start, stop);
 
     cudaMemcpy(cypher, d_cypher, PLAIN_SIZE, cudaMemcpyDeviceToHost);
-    
+
     printf("GPU: %lu Mbytes in %f ms\n", PLAIN_SIZE/1000/1000, time);
     printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8*NENCRYPT);
-    
+
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    cudaFree(d_roundkey); 
+    cudaFree(d_roundkey);
 #ifndef INPLACE
     cudaFree(d_cypher);
-#endif 
+#endif
     cudaFree(d_plain);
 
     //VERIFY AVX AES
@@ -585,7 +585,7 @@ int main(void) {
     uint8_t iv[16];
     unsigned char* out = (unsigned char*)malloc(BLOCK_SIZE*NUM_BLOCKS);
     memset(iv, 0, 16);
-  
+
     aes_cbc_precomp((uint8_t*)key,CBC_128_BITS,&avx_roundkeys);
     startav = clock();
     for(unsigned long i=0; i<8*NUM_BLOCKS; i++){
@@ -595,20 +595,20 @@ int main(void) {
     cpu_time_usedav = ((double) (endav - startav)) / CLOCKS_PER_SEC;
     printf("AVX: %lu Mbytes in %f s\n", PLAIN_SIZE/1000/1000, cpu_time_usedav);
     printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE/1000/time/1000/1000*8);
-    
+
     if(memcmp(out, cypher,  PLAIN_SIZE)!= 0){
         printf("failed\n");
         printError();
     } else {
         printf("passed\n");
     }
-    
+
     int ran_line = rand()%(PLAIN_SIZE-25);
     printHex(cypher+ran_line,20);
     printHex(out+ran_line,20);
-    
+
     free(out);
-    
+
     free(bs_roundkey);
     free(roundkey);
     free(key);
