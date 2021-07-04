@@ -16,7 +16,7 @@
 #define ROUND_KEY_SIZE ROUND_KEY_COUNT * KEY_SIZE
 
 #define SERIAL 1       // let a Thread process n aes blocks
-#define THREADPARA 256 // number of threads in a working group
+#define THREADPARA 64 // number of threads in a working group
 #define INPLACE 1      // comment out to disable in place encryption
 #define NENCRYPT 1     // encrypt n-times, only for test purpose
 #define DATAINGIGS 40  // desired plaintext size in GB

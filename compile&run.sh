@@ -7,7 +7,7 @@ then
     ./test
 else
     echo "Compile AES:"
-    nvcc  --maxrregcount=900 -O3 -Xptxas -O3,-v -Xcompiler -O3 -use_fast_math -o aes bits_aes.cu -I CUDA-uint128 -I isa-l_crypto/include  -L isa-l_crypto/bin -lisal_crypto
+    nvcc -o aes bits_aes.cu -I CUDA-uint128 -I isa-l_crypto/include  -L isa-l_crypto/bin -lisal_crypto
     ./aes
 fi
 
