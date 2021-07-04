@@ -60,7 +60,6 @@ __device__ void bitorder_retransform(unsigned char* __restrict__  plain, uint128
     swapByte(a+4, a+5, m1, 1);
     swapByte(a+6, a+7, m1, 1);
 
-    #pragma unroll
     for(int i=0; i<8; i++){
         swap((unsigned char*)(void*)&a[i], 1, 4);
         swap((unsigned char*)(void*)&a[i], 2, 8);
@@ -70,7 +69,6 @@ __device__ void bitorder_retransform(unsigned char* __restrict__  plain, uint128
         swap((unsigned char*)(void*)&a[i],14,11);
     }
 
-    #pragma unroll
     for(int i=0; i<8; i++){
         ((uint128_t*)plain)[i] = a[i];
     }
@@ -82,12 +80,10 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, uint128_t
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
 
-    #pragma unroll
     for(int i=0; i<8; i++){
         a[i] = ((uint128_t*)plain)[i];
     }
 
-    #pragma unroll
     for(int i=0; i<8; i++){ //TODO improove ?
         swap((unsigned char*)(void*)&a[i], 1, 4);
         swap((unsigned char*)(void*)&a[i], 2, 8);
@@ -318,7 +314,6 @@ __device__ void subBytes(uint128_t a[8]){
 }
 
 __device__ void shiftRows(uint128_t a[8]){
-    #pragma unroll
     for(int i=0; i<8; i++){
         a[i].lo = (uint64_t)__byte_perm((uint64_t)(a[i].lo)>>32,0,0b0000001100100001)<<32 | a[i].lo&0xffffffff;
         a[i].hi = ((uint64_t)__byte_perm(a[i].hi>>32,0,
@@ -327,7 +322,6 @@ __device__ void shiftRows(uint128_t a[8]){
 }
 
 __device__ void addRoundKey(uint128_t* __restrict__ a, uint128_t* __restrict__  key){
-    #pragma unroll
     for(int i=0; i<8; i++){
         a[i] ^= key[i];
     }
@@ -340,11 +334,9 @@ __global__ void encrypt(unsigned char*  __restrict__ plain, unsigned char*  __re
 #endif
     uint128_t a[8];
     plain = plain + BLOCK_SIZE * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
-    #pragma unroll
     for(int j=0; j<SERIAL;j++){
         bitorder_transform(plain, a);
         addRoundKey(a, keys);
-        #pragma unroll
         for(int i=1; i< NR; i++){
             subBytes(a);
             shiftRows(a);
@@ -552,7 +544,6 @@ int main(void) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start, 0);
-    #pragma unroll
     for(int i=0; i<NENCRYPT; i++){
 #ifdef INPLACE
         encrypt<<<NUM_BLOCKS/SERIAL/THREADPARA,THREADPARA>>>(d_plain, d_roundkey);
@@ -566,7 +557,7 @@ int main(void) {
 
     cudaMemcpy(cypher, d_cypher, PLAIN_SIZE, cudaMemcpyDeviceToHost);
 
-    printf("GPU: %lu Mbytes in %f ms\n", PLAIN_SIZE/1000/1000, time);
+    printf("GPU: %lu Mbytes in %f ms\n", PLAIN_SIZE/1000/1000*NENCRYPT, time);
     printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE*1000/1000/time/1000/1000*8*NENCRYPT);
 
     cudaEventDestroy(start);
@@ -593,8 +584,8 @@ int main(void) {
     }
     endav = clock();
     cpu_time_usedav = ((double) (endav - startav)) / CLOCKS_PER_SEC;
-    printf("AVX: %lu Mbytes in %f s\n", PLAIN_SIZE/1000/1000, cpu_time_usedav);
-    printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE/1000/time/1000/1000*8);
+    printf("AVX: %lu Mbytes in %f s\n", PLAIN_SIZE/1000/1000*NENCRYPT, cpu_time_usedav);
+    printf("Makes %f Gbps\n", 1.0*PLAIN_SIZE/1000/time/1000/1000*8*NENCRYPT);
 
     if(memcmp(out, cypher,  PLAIN_SIZE)!= 0){
         printf("failed\n");
