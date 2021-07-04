@@ -1,3 +1,6 @@
+#include "cuda_uint128.h"
+#include "device.h"
+
 void set_byte(unsigned char a[8][16], int n, unsigned char v){
     int c = n/8;
     int b = 7-n%8;
