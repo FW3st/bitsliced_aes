@@ -27,46 +27,46 @@
 
 
 // from [13] A Fast and Cache-Timing Resistant Implementation of the AES
-__device__ static void swapByte(uint128_t* __restrict__  a , uint128_t* __restrict__  b, uint128_t m, int n){
+__device__ static void swapMove(uint128_t* __restrict__  a , uint128_t* __restrict__  b, uint128_t m, int n){
     uint128_t t = ((((*a)>>n)^(*b)))&m;
     *b = (*b) ^ t;
     *a = (*a) ^ (t << n);
 }
 
 
-__device__ void swap(unsigned char* a, int i, int j){
+__device__ void swapMove(unsigned char* a, int i, int j){
     unsigned char tmp = a[i];
     a[i] = a[j];
     a[j]=tmp;
 }
 
-__device__ void bitorder_retransform(unsigned char* __restrict__  plain, uint128_t* __restrict__  a){
+__device__ void reverseBundle(unsigned char* __restrict__  plain, uint128_t* __restrict__  a){
     const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
 
-    swapByte(a,   a+4, m3, 4);
-    swapByte(a+1, a+5, m3, 4);
-    swapByte(a+2, a+6, m3, 4);
-    swapByte(a+3, a+7, m3, 4);
+    swapMove(a,   a+4, m3, 4);
+    swapMove(a+1, a+5, m3, 4);
+    swapMove(a+2, a+6, m3, 4);
+    swapMove(a+3, a+7, m3, 4);
 
-    swapByte(a,   a+2, m2, 2);
-    swapByte(a+1, a+3, m2, 2);
-    swapByte(a+4, a+6, m2, 2);
-    swapByte(a+5, a+7, m2, 2);
+    swapMove(a,   a+2, m2, 2);
+    swapMove(a+1, a+3, m2, 2);
+    swapMove(a+4, a+6, m2, 2);
+    swapMove(a+5, a+7, m2, 2);
 
-    swapByte(a,   a+1, m1, 1);
-    swapByte(a+2, a+3, m1, 1);
-    swapByte(a+4, a+5, m1, 1);
-    swapByte(a+6, a+7, m1, 1);
+    swapMove(a,   a+1, m1, 1);
+    swapMove(a+2, a+3, m1, 1);
+    swapMove(a+4, a+5, m1, 1);
+    swapMove(a+6, a+7, m1, 1);
 
     for(int i=0; i<8; i++){
-        swap((unsigned char*)(void*)&a[i], 1, 4);
-        swap((unsigned char*)(void*)&a[i], 2, 8);
-        swap((unsigned char*)(void*)&a[i], 3,12);
-        swap((unsigned char*)(void*)&a[i], 6, 9);
-        swap((unsigned char*)(void*)&a[i],13, 7);
-        swap((unsigned char*)(void*)&a[i],14,11);
+        swapMove((unsigned char*)(void*)&a[i], 1, 4);
+        swapMove((unsigned char*)(void*)&a[i], 2, 8);
+        swapMove((unsigned char*)(void*)&a[i], 3,12);
+        swapMove((unsigned char*)(void*)&a[i], 6, 9);
+        swapMove((unsigned char*)(void*)&a[i],13, 7);
+        swapMove((unsigned char*)(void*)&a[i],14,11);
     }
 
     for(int i=0; i<8; i++){
@@ -75,7 +75,7 @@ __device__ void bitorder_retransform(unsigned char* __restrict__  plain, uint128
 }
 
 
-__device__ void bitorder_transform(unsigned char* __restrict__  plain, uint128_t* __restrict__  a){
+__device__ void createBundle(unsigned char* __restrict__  plain, uint128_t* __restrict__  a){
     const uint128_t m1 = (uint128_t) 0x5555555555555555 << 64 | 0x5555555555555555;
     const uint128_t m2 = (uint128_t) 0x3333333333333333 << 64 | 0x3333333333333333;
     const uint128_t m3 = (uint128_t) 0x0f0f0f0f0f0f0f0f << 64 | 0x0f0f0f0f0f0f0f0f;
@@ -84,29 +84,28 @@ __device__ void bitorder_transform(unsigned char* __restrict__  plain, uint128_t
         a[i] = ((uint128_t*)plain)[i];
     }
 
-    for(int i=0; i<8; i++){ //TODO improove ?
-        swap((unsigned char*)(void*)&a[i], 1, 4);
-        swap((unsigned char*)(void*)&a[i], 2, 8);
-        swap((unsigned char*)(void*)&a[i], 3,12);
-        swap((unsigned char*)(void*)&a[i], 6, 9);
-        swap((unsigned char*)(void*)&a[i],13, 7);
-        swap((unsigned char*)(void*)&a[i],14,11);
+    for(int i=0; i<8; i++){ //TODO possible to improove?
+        swapMove((unsigned char*)(void*)&a[i], 1, 4);
+        swapMove((unsigned char*)(void*)&a[i], 2, 8);
+        swapMove((unsigned char*)(void*)&a[i], 3,12);
+        swapMove((unsigned char*)(void*)&a[i], 6, 9);
+        swapMove((unsigned char*)(void*)&a[i],13, 7);
+        swapMove((unsigned char*)(void*)&a[i],14,11);
     }
+    swapMove(a,   a+1, m1, 1);
+    swapMove(a+2, a+3, m1, 1);
+    swapMove(a+4, a+5, m1, 1);
+    swapMove(a+6, a+7, m1, 1);
 
-    swapByte(a,   a+1, m1, 1);
-    swapByte(a+2, a+3, m1, 1);
-    swapByte(a+4, a+5, m1, 1);
-    swapByte(a+6, a+7, m1, 1);
+    swapMove(a,   a+2, m2, 2);
+    swapMove(a+1, a+3, m2, 2);
+    swapMove(a+4, a+6, m2, 2);
+    swapMove(a+5, a+7, m2, 2);
 
-    swapByte(a,   a+2, m2, 2);
-    swapByte(a+1, a+3, m2, 2);
-    swapByte(a+4, a+6, m2, 2);
-    swapByte(a+5, a+7, m2, 2);
-
-    swapByte(a,   a+4, m3, 4);
-    swapByte(a+1, a+5, m3, 4);
-    swapByte(a+2, a+6, m3, 4);
-    swapByte(a+3, a+7, m3, 4);
+    swapMove(a,   a+4, m3, 4);
+    swapMove(a+1, a+5, m3, 4);
+    swapMove(a+2, a+6, m3, 4);
+    swapMove(a+3, a+7, m3, 4);
 }
 
 __device__ static uint128_t rot(uint128_t a, const int N){
@@ -134,48 +133,6 @@ __device__ void mixColumns(uint128_t a[8]){
    a[6]=t6;
    a[7]=t7;
 }
-
-/*
-// from [13] A Fast and Cache-Timing Resistant Implementation of the AES
-__device__ void mixColumnsFAILS(uint128_t a[8]){
-    uint128_t t0 = a[0] ^ rot(a[0],32);
-    uint128_t t1 = rot(a[1],32) ^ rot(a[1],64);
-    uint128_t t2 = a[2] ^ rot(a[2],32);
-    uint128_t t3 = rot(a[3],32) ^ rot(a[3],64);
-    uint128_t t4 = a[4] ^ rot(a[4],32);
-    uint128_t t5 = rot(a[5],32) ^ rot(a[5],64);
-    uint128_t t6 = a[6] ^ rot(a[6],32);
-    uint128_t t7 = rot(a[7],32) ^ rot(a[7],64);
-
-    a[2] ^= t1;
-    t1 ^= t0;
-    t1 = rot(t1,32);
-    a[1] ^= t1;
-    t0 = rot(t0,64);
-    a[0] ^= t0;
-    a[4] ^= t3;
-    t3 ^= t2;
-    t3 = rot(t3,32);
-    a[3] ^= t3;
-    t2 = rot(t2,64);
-    a[2] ^= t2;
-    a[6] ^= t5;
-    t5 ^= t4;
-    t5 = rot(t5,32);
-    a[5] ^= t5;
-    t4 = rot(t4,64);
-    a[4] ^= t4;
-    a[0] ^= t7;
-    a[1] ^= t7;
-    a[3] ^= t7;
-    a[4] ^= t7;
-    t7 ^= t6;
-    t7 = rot(t7,32);
-    a[7] ^= t7;
-    t6 = rot(t6,64);
-    a[6] ^= t6;
-}
-*/
 
 
 // from [14] A Small Depth-16 Circuit for the AES S-Box
@@ -335,7 +292,7 @@ __global__ void encrypt(unsigned char*  __restrict__ plain, unsigned char*  __re
     uint128_t a[8];
     plain = plain + BLOCK_SIZE * (blockIdx.x*SERIAL*THREADPARA+threadIdx.x);
     for(int j=0; j<SERIAL;j++){
-        bitorder_transform(plain, a);
+        createBundle(plain, a);
         addRoundKey(a, keys);
         for(int i=1; i< NR; i++){
             subBytes(a);
@@ -348,9 +305,9 @@ __global__ void encrypt(unsigned char*  __restrict__ plain, unsigned char*  __re
         addRoundKey(a, keys+8*10);
 
 #ifdef INPLACE
-        bitorder_retransform(plain, (uint128_t*)a);
+        reverseBundle(plain, (uint128_t*)a);
 #else
-        bitorder_retransform(cypher, (uint128_t*)a);
+        reverseBundle(cypher, (uint128_t*)a);
         cypher = cypher + BLOCK_SIZE*THREADPARA;
 #endif
         plain = plain + BLOCK_SIZE*THREADPARA;
