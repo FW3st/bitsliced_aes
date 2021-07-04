@@ -34,7 +34,7 @@ __device__ static void swapMove(uint128_t* __restrict__  a , uint128_t* __restri
 }
 
 
-__device__ void swapMove(unsigned char* a, int i, int j){
+__device__ void swapByte(unsigned char* a, int i, int j){
     unsigned char tmp = a[i];
     a[i] = a[j];
     a[j]=tmp;
@@ -61,12 +61,12 @@ __device__ void reverseBundle(unsigned char* __restrict__  plain, uint128_t* __r
     swapMove(a+6, a+7, m1, 1);
 
     for(int i=0; i<8; i++){
-        swapMove((unsigned char*)(void*)&a[i], 1, 4);
-        swapMove((unsigned char*)(void*)&a[i], 2, 8);
-        swapMove((unsigned char*)(void*)&a[i], 3,12);
-        swapMove((unsigned char*)(void*)&a[i], 6, 9);
-        swapMove((unsigned char*)(void*)&a[i],13, 7);
-        swapMove((unsigned char*)(void*)&a[i],14,11);
+        swapByte((unsigned char*)(void*)&a[i], 1, 4);
+        swapByte((unsigned char*)(void*)&a[i], 2, 8);
+        swapByte((unsigned char*)(void*)&a[i], 3,12);
+        swapByte((unsigned char*)(void*)&a[i], 6, 9);
+        swapByte((unsigned char*)(void*)&a[i],13, 7);
+        swapByte((unsigned char*)(void*)&a[i],14,11);
     }
 
     for(int i=0; i<8; i++){
@@ -85,12 +85,12 @@ __device__ void createBundle(unsigned char* __restrict__  plain, uint128_t* __re
     }
 
     for(int i=0; i<8; i++){ //TODO possible to improove?
-        swapMove((unsigned char*)(void*)&a[i], 1, 4);
-        swapMove((unsigned char*)(void*)&a[i], 2, 8);
-        swapMove((unsigned char*)(void*)&a[i], 3,12);
-        swapMove((unsigned char*)(void*)&a[i], 6, 9);
-        swapMove((unsigned char*)(void*)&a[i],13, 7);
-        swapMove((unsigned char*)(void*)&a[i],14,11);
+        swapByte((unsigned char*)(void*)&a[i], 1, 4);
+        swapByte((unsigned char*)(void*)&a[i], 2, 8);
+        swapByte((unsigned char*)(void*)&a[i], 3,12);
+        swapByte((unsigned char*)(void*)&a[i], 6, 9);
+        swapByte((unsigned char*)(void*)&a[i],13, 7);
+        swapByte((unsigned char*)(void*)&a[i],14,11);
     }
     swapMove(a,   a+1, m1, 1);
     swapMove(a+2, a+3, m1, 1);
